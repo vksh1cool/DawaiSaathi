@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Household {
+  id            String     @id @default(cuid())
+  caregiverName String
+  uiLanguage    String     @default("en") // "en" | "hi"
+  createdAt     DateTime   @default(now())
+  patients      Patient[]
+}
+
+model Patient {
+  id          String               @id @default(cuid())
+  householdId String
+  household   Household            @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name        String
+  phoneE164   String // "+91XXXXXXXXXX"
+  language    String               @default("hi") // "hi" | "en" (call language)
+  voiceGender String               @default("female") // "female" | "male"
+  timezone    String               @default("Asia/Kolkata")
+  createdAt   DateTime             @default(now())
+  medications Medication[]
+  doseEvents  DoseEvent[]
+  findings    InteractionFinding[]
+  alerts      CaregiverAlert[]
+}
+
+model ScanBatch {
+  id                String      @id @default(cuid())
+  patientId         String
+  status            String      @default("processing") // processing|extracted|confirmed|failed
+  rawExtractionJson String?
+  createdAt         DateTime    @default(now())
+  photos            ScanPhoto[]
+}
+
+model ScanPhoto {
+  id        String    @id @default(cuid())
+  batchId   String
+  batch     ScanBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  filePath  String
+  mimeType  String
+  sizeBytes Int
+}
+
+model Medication {
+  id                  String         @id @default(cuid())
+  patientId           String
+  patient             Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  scanBatchId         String?
+  brandName           String
+  displayGeneric      String
+  saltsJson           String
+  form                String         @default("tablet") // tablet|capsule|syrup|drops|injection|cream|other
+  packSize            Int?
+  mrpInr              Float?
+  expiryDate          String? // "YYYY-MM"
+  batchNumber         String?
+  manufacturer        String?
+  highRisk            Boolean        @default(false)
+  highRiskReason      String?
+  fieldConfidenceJson String?
+  usualFrequencyHint  String?
+  status              String         @default("active") // active|archived
+  notes               String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  schedules           Schedule[]
+  genericMatches      GenericMatch[]
+  doseEvents          DoseEvent[]
+}
+
+model Schedule {
+  id           String      @id @default(cuid())
+  medicationId String
+  medication   Medication  @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  timesJson    String // JSON: ["08:00","20:00"] patient-local
+  foodRelation String      @default("any") // before_food|after_food|with_food|any
+  startDate    DateTime
+  endDate      DateTime?
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  doseEvents   DoseEvent[]
+}
+
+model DoseEvent {
+  id               String    @id @default(cuid())
+  scheduleId       String
+  schedule         Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  medicationId     String
+  medication       Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  patientId        String
+  patient          Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  scheduledAtUtc   DateTime
+  status           String    @default("scheduled") // scheduled|calling|confirmed|missed|skipped
+  attempts         Int       @default(0)
+  nextAttemptAtUtc DateTime?
+  confirmedAtUtc   DateTime?
+  confirmedVia     String? // ivr_dtmf|caregiver_manual|simulated
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([scheduleId, scheduledAtUtc])
+  @@index([status, scheduledAtUtc])
+}
+
+model ReminderCall {
+  id               String   @id @default(cuid())
+  patientId        String
+  scheduledAtUtc   DateTime
+  doseEventIdsJson String
+  attempt          Int
+  mode             String   @default("twilio") // twilio|simulated
+  twilioCallSid    String?  @unique
+  twilioStatus     String?
+  digitsPressed    String?
+  outcome          String? // confirmed|no_input|not_answered|failed
+  replayCount      Int      @default(0)
+  audioFile        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model InteractionFinding {
+  id             String    @id @default(cuid())
+  patientId      String
+  patient        Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  runId          String
+  pairKey        String
+  medAId         String
+  medBId         String
+  saltA          String
+  saltB          String
+  severity       String // major|moderate|minor|unverified
+  source         String // curated|openfda|llm_suspected
+  explanationEn  String
+  explanationHi  String
+  actionEn       String
+  actionHi       String
+  evidenceJson   String    @default("[]")
+  acknowledged   Boolean   @default(false)
+  acknowledgedAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([patientId, acknowledged])
+}
+
+model GenericMatch {
+  id                String     @id @default(cuid())
+  medicationId      String
+  medication        Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  jaProductCode     String?
+  jaProductName     String?
+  jaPackSize        Int?
+  jaMrpInr          Float?
+  jaUnitPriceInr    Float?
+  brandUnitPriceInr Float?
+  monthlySavingsInr Int?
+  confidence        String? // high|medium|low
+  estimated         Boolean    @default(false)
+  createdAt         DateTime   @default(now())
+}
+
+model CaregiverAlert {
+  id               String    @id @default(cuid())
+  patientId        String
+  patient          Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type             String // missed_dose
+  doseEventIdsJson String    @default("[]")
+  messageEn        String
+  messageHi        String
+  readAt           DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model ApiCache {
+  key       String   @id
+  payload   String
+  fetchedAt DateTime @default(now())
+}
+
+model AudioAsset {
+  id         String   @id @default(cuid())
+  hash       String   @unique
+  language   String
+  scriptText String
+  filePath   String
+  createdAt  DateTime @default(now())
+}

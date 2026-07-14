@@ -1,0 +1,98 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import { ArrowLeft, Filter } from "lucide-react";
+import { AppShell } from "@/components/AppShell";
+import { AdherenceBar } from "@/components/AdherenceBar";
+import { CallLogRow, CallLog } from "@/components/CallLogRow";
+import { Spinner, Card } from "@/components/ui";
+import { useI18n } from "@/lib/i18n/provider";
+import { apiGet } from "@/lib/api-client";
+
+type Adherence = {
+  percent: number;
+  byDay: { date: string; confirmed: number; missed: number; pending: number }[];
+};
+
+export default function HistoryPage() {
+  const { t } = useI18n();
+  const [loading, setLoading] = useState(true);
+  const [adherence, setAdherence] = useState<Adherence | null>(null);
+  const [calls, setCalls] = useState<CallLog[]>([]);
+  const [filter, setFilter] = useState<"all" | "confirmed" | "missed">("all");
+
+  const load = useCallback(async () => {
+    try {
+      const [adhRes, callsRes] = await Promise.all([
+        apiGet<Adherence>("/api/adherence?days=7"),
+        apiGet<{ calls: CallLog[] }>("/api/calls"),
+      ]);
+      setAdherence(adhRes);
+      setCalls(callsRes.calls);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (loading) {
+    return (
+      <AppShell>
+        <Spinner label={t("common.loading")} />
+      </AppShell>
+    );
+  }
+
+  const filteredCalls = calls.filter((c) => {
+    if (filter === "confirmed") return c.outcome === "confirmed";
+    if (filter === "missed") return c.outcome === "not_answered" || c.outcome === "no_input";
+    return true;
+  });
+
+  return (
+    <AppShell>
+      <div className="mb-6 flex items-center gap-3">
+        <Link href="/" className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--color-bg)] transition-colors active:bg-[var(--color-border)]">
+          <ArrowLeft size={20} />
+        </Link>
+        <h1 className="text-2xl font-bold">{t("home.history")}</h1>
+      </div>
+
+      {adherence && (
+        <Card className="mb-6">
+          <AdherenceBar percent={adherence.percent} byDay={adherence.byDay} />
+        </Card>
+      )}
+
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="font-semibold">{t("history.callLogs")}</h2>
+        <div className="flex items-center gap-2">
+          <Filter size={16} className="text-[var(--color-text-muted)]" />
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as any)}
+            className="rounded-full bg-[var(--color-bg)] px-3 py-1 text-sm outline-none ring-1 ring-[var(--color-border)] focus:ring-[var(--color-primary)]"
+          >
+            <option value="all">{t("history.filterAll")}</option>
+            <option value="confirmed">{t("history.filterConfirmed")}</option>
+            <option value="missed">{t("history.filterMissed")}</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {filteredCalls.length === 0 ? (
+          <div className="py-8 text-center text-sm text-[var(--color-text-muted)]">
+            {t("history.empty")}
+          </div>
+        ) : (
+          filteredCalls.map((log) => <CallLogRow key={log.id} log={log} />)
+        )}
+      </div>
+    </AppShell>
+  );
+}

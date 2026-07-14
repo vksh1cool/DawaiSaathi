@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+/* ── Design tokens (02-DESIGN.md §3) ─────────────────────────────── */
+@theme {
+  --color-primary: #0f766e;
+  --color-primary-soft: #ccfbf1;
+  --color-bg: #fafaf7;
+  --color-surface: #ffffff;
+  --color-text: #1c1917;
+  --color-text-muted: #57534e;
+  --color-border: #e7e5e4;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fee2e2;
+  --color-warn: #d97706;
+  --color-warn-soft: #fef3c7;
+  --color-info: #2563eb;
+  --color-info-soft: #dbeafe;
+  --color-unverified: #7c3aed;
+  --color-unverified-soft: #ede9fe;
+  --color-success: #16a34a;
+  --color-success-soft: #dcfce7;
+
+  --radius-card: 16px;
+  --radius-btn: 12px;
+  --radius-banner: 12px;
+
+  --font-sans: var(--font-inter), var(--font-noto-devanagari), system-ui, sans-serif;
+}
+
+/* ── Base ─────────────────────────────────────────────────────────── */
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hindi needs slightly larger base + looser leading (02-DESIGN §3.2) */
+html[lang="hi"] body {
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* Visible focus rings everywhere (accessibility §9) */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Elder-friendly: no accidental zoom lock; large tap areas via utilities */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@keyframes dose-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 16px rgba(22, 163, 74, 0);
+  }
+}
+
+.animate-dose-pulse {
+  animation: dose-pulse 300ms ease-out;
+}
+
+.card-shadow {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+}
+
+.modal-shadow {
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.18);
+}

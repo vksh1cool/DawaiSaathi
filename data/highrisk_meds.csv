@@ -1,0 +1,12 @@
+salt,reason_en,reason_hi,special_check
+warfarin,Narrow therapeutic index — bleeding risk,खून पतला करने की दवा — विशेष सावधानी ज़रूरी,none
+insulin,Hypoglycemia risk — dosing errors dangerous,शुगर बहुत कम होने का खतरा,none
+methotrexate,Usually WEEKLY dosing — daily intake is dangerous,आमतौर पर हफ़्ते में एक बार — रोज़ लेना खतरनाक,weekly_check
+digoxin,Narrow therapeutic index,दिल की दवा — विशेष सावधानी ज़रूरी,none
+lithium,Narrow therapeutic index — levels must be monitored,विशेष निगरानी ज़रूरी,none
+amiodarone,Multiple serious interactions,कई दवाओं के साथ गंभीर प्रतिक्रिया,none
+phenytoin,Narrow therapeutic index,विशेष सावधानी ज़रूरी,none
+carbamazepine,Many interactions via liver enzymes,कई दवाओं पर असर डालती है,none
+glimepiride,Hypoglycemia risk in elderly,बुज़ुर्गों में शुगर कम होने का खतरा,none
+glibenclamide,Hypoglycemia risk in elderly,बुज़ुर्गों में शुगर कम होने का खतरा,none
+tramadol,Serotonin syndrome and dependence risk,विशेष सावधानी ज़रूरी,none

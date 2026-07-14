@@ -1,0 +1,135 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Check } from "lucide-react";
+import { AppShell } from "@/components/AppShell";
+import { MedReviewCard } from "@/components/MedReviewCard";
+import { PrimaryButton, GhostButton, Banner, Spinner } from "@/components/ui";
+import { useI18n } from "@/lib/i18n/provider";
+import { apiJson, ApiError } from "@/lib/api-client";
+import type { DraftMedication } from "@/types/domain";
+
+type ScanResult = { scanBatchId: string; medications: DraftMedication[]; imageIssues: string[] };
+
+let manualCounter = 0;
+const emptyDraft = (): DraftMedication => ({
+  tempId: `manual_${manualCounter++}`,
+  brandName: "",
+  salts: [{ inn: "", fdaSearchName: "", strengthValue: null, strengthUnit: "mg" }],
+  form: "tablet",
+  packSize: null,
+  mrpInr: null,
+  expiryDate: null,
+  batchNumber: null,
+  manufacturer: null,
+  fieldConfidence: { brandName: 1, salts: 1, mrpInr: 1, expiryDate: 1 },
+  warnings: [],
+  highRisk: false,
+  highRiskReason: null,
+  usualFrequencyHint: null,
+  displayGeneric: "",
+});
+
+export default function ReviewPage() {
+  const { t } = useI18n();
+  const router = useRouter();
+  const [scan, setScan] = useState<ScanResult | null>(null);
+  const [meds, setMeds] = useState<DraftMedication[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem("dawaisaathi.scan");
+    if (!raw) {
+      router.replace("/scan");
+      return;
+    }
+    const parsed = JSON.parse(raw) as ScanResult;
+    setScan(parsed);
+    setMeds(parsed.medications);
+  }, [router]);
+
+  const confirm = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      // Normalize salts (strip empties) and persist.
+      const cleaned = meds.map((m) => ({
+        ...m,
+        salts: m.salts.filter((s) => s.inn.trim() !== ""),
+        displayGeneric: m.displayGeneric || m.salts.map((s) => s.inn).filter(Boolean).join(" + "),
+      }));
+      await apiJson("/api/medications", "POST", {
+        scanBatchId: scan?.scanBatchId,
+        medications: cleaned,
+      });
+      sessionStorage.removeItem("dawaisaathi.scan");
+
+      // Trigger safety + savings runs; navigate based on findings (AC-2.2).
+      let hasFindings = false;
+      try {
+        const res = await apiJson<{ findings: unknown[] }>("/api/interactions/run", "POST");
+        hasFindings = (res.findings?.length ?? 0) > 0;
+      } catch {
+        /* interactions best-effort; continue */
+      }
+      apiJson("/api/generics/run", "POST").catch(() => undefined);
+
+      router.push(hasFindings ? "/safety" : "/schedule");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not save. Please try again.");
+      setSaving(false);
+    }
+  };
+
+  if (!scan) {
+    return (
+      <AppShell>
+        <Spinner label={t("common.loading")} />
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell>
+      <h1 className="text-2xl font-bold">{t("review.title", { n: meds.length })}</h1>
+      <p className="mb-4 mt-1 text-sm text-[var(--color-text-muted)]">{t("review.subtitle")}</p>
+
+      {scan.imageIssues.length > 0 && (
+        <div className="mb-4">
+          <Banner tone="warn">{scan.imageIssues.join(" · ")}</Banner>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3">
+        {meds.map((m) => (
+          <MedReviewCard
+            key={m.tempId}
+            draft={m}
+            onChange={(next) => setMeds((prev) => prev.map((x) => (x.tempId === m.tempId ? next : x)))}
+            onRemove={() => setMeds((prev) => prev.filter((x) => x.tempId !== m.tempId))}
+          />
+        ))}
+      </div>
+
+      <div className="mt-4 flex flex-col gap-3">
+        <GhostButton onClick={() => setMeds((prev) => [...prev, emptyDraft()])}>
+          <Plus size={16} /> {t("review.addManual")}
+        </GhostButton>
+
+        {error && <Banner tone="danger">{error}</Banner>}
+
+        <PrimaryButton disabled={saving || meds.length === 0} onClick={confirm}>
+          {saving ? (
+            t("common.loading")
+          ) : (
+            <>
+              <Check size={18} /> {t("review.confirmBtn", { n: meds.length })}
+            </>
+          )}
+        </PrimaryButton>
+      </div>
+    </AppShell>
+  );
+}
