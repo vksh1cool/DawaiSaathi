@@ -46,6 +46,11 @@ const realClient: LLMClient = {
         : { type: "image_url" as const, image_url: { url: c.dataUrl } },
     );
 
+    const hasImages = content.some((c) => c.type === "image");
+    // Use the vision model when the request includes images (matters for Groq
+    // where the vision model is a separate deployment).
+    const model = hasImages ? config.llmVisionModel : config.llmModel;
+
     const backoffs = [1000, 4000];
     let lastErr: unknown;
     for (let attempt = 0; attempt <= backoffs.length; attempt++) {
@@ -55,14 +60,24 @@ const realClient: LLMClient = {
         // true stop rather than merely an after-the-fact usage alert.
         await reserveOpenAiRequest("llm");
         const started = Date.now();
+
+        // For non-OpenAI providers (Groq, NIM), we can't rely on strict
+        // json_schema response format. Instead use json_object mode and
+        // include the schema in the system prompt so the model knows the
+        // expected structure.
+        const jsonHint =
+          config.llmProvider !== "openai"
+            ? `\n\nYou MUST respond with valid JSON matching this schema:\n${JSON.stringify(jsonSchema, null, 2)}`
+            : "";
+
         const messages = [
-          { role: "system" as const, content: system },
+          { role: "system" as const, content: system + jsonHint },
           { role: "user" as const, content: userParts },
         ];
         const resp = await openai.chat.completions.create(
           config.llmProvider === "openai"
             ? {
-                model: config.llmModel,
+                model,
                 messages,
                 response_format: {
                   type: "json_schema",
@@ -74,16 +89,18 @@ const realClient: LLMClient = {
                 },
               }
             : {
-                // NIM exposes the chat-completions surface, but deployed
-                // models do not all implement OpenAI's strict JSON-schema
-                // response format. Prompts demand JSON and zod remains the
-                // final validation boundary below.
-                model: config.llmModel,
+                // Groq and NIM expose the chat-completions surface, but
+                // deployed models do not all implement OpenAI's strict
+                // JSON-schema response format. We use json_object mode
+                // and the schema is included in the system prompt above.
+                // Zod remains the final validation boundary below.
+                model,
                 messages,
+                response_format: { type: "json_object" },
               },
         );
         logger.info(
-          { service: config.llmProvider, op: schemaName, ms: Date.now() - started, ok: true },
+          { service: config.llmProvider, op: schemaName, model, ms: Date.now() - started, ok: true },
           "llm call",
         );
         const text = resp.choices[0]?.message?.content;

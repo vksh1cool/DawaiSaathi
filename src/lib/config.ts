@@ -2,9 +2,11 @@ import { z } from "zod";
 
 /**
  * Typed, validated environment access (Arch §3).
- * The LLM can use OpenAI or an OpenAI-compatible NVIDIA NIM endpoint. TTS is
- * intentionally separate: NIM LLM credentials do not imply an audio-speech
- * endpoint, and calls retain a Twilio <Say> fallback when OpenAI TTS is absent.
+ * The LLM can use OpenAI, an OpenAI-compatible NVIDIA NIM endpoint, or Groq.
+ * Groq uses two models: a large text model for reasoning tasks and a vision
+ * model (Llama-4-Scout) for strip scanning. TTS is intentionally separate:
+ * NIM/Groq credentials do not imply an audio-speech endpoint, and calls
+ * retain a Twilio <Say> fallback when OpenAI TTS is absent.
  */
 
 const bool = (def: boolean) =>
@@ -28,13 +30,16 @@ const nonNegativeInt = (def: number) =>
     .pipe(z.number().int().nonnegative());
 
 const schema = z.object({
-  AI_PROVIDER: z.enum(["openai", "nim"]).default("openai"),
+  AI_PROVIDER: z.enum(["openai", "nim", "groq"]).default("openai"),
   OPENAI_API_KEY: z.string().trim().optional(),
   OPENAI_BASE_URL: z.string().url().optional(),
   OPENAI_MODEL: z.string().default("gpt-5.6"),
   NIM_API_KEY: z.string().trim().optional(),
   NIM_BASE_URL: z.string().url().default("https://integrate.api.nvidia.com/v1"),
   NIM_MODEL: z.string().trim().optional(),
+  GROQ_API_KEY: z.string().trim().optional(),
+  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
+  GROQ_VISION_MODEL: z.string().default("meta-llama/llama-4-scout-17b-16e-instruct"),
   OPENAI_TTS_MODEL: z.string().default("gpt-4o-mini-tts"),
   OPENAI_TTS_VOICE_FEMALE: z.string().default("coral"),
   OPENAI_TTS_VOICE_MALE: z.string().default("onyx"),
@@ -84,6 +89,7 @@ const isConfiguredSecret = (value: string | undefined) =>
 
 const openAiConfigured = isConfiguredSecret(env.OPENAI_API_KEY);
 const nimConfigured = isConfiguredSecret(env.NIM_API_KEY);
+const groqConfigured = isConfiguredSecret(env.GROQ_API_KEY);
 const configIssues: string[] = [];
 if (env.AI_PROVIDER === "openai" && !openAiConfigured) {
   configIssues.push("OPENAI_API_KEY is required when AI_PROVIDER=openai");
@@ -94,13 +100,27 @@ if (env.AI_PROVIDER === "nim" && !nimConfigured) {
 if (env.AI_PROVIDER === "nim" && !env.NIM_MODEL) {
   configIssues.push("NIM_MODEL is required when AI_PROVIDER=nim");
 }
+if (env.AI_PROVIDER === "groq" && !groqConfigured) {
+  configIssues.push("GROQ_API_KEY is required when AI_PROVIDER=groq");
+}
 if (configIssues.length > 0) {
   throw new Error(`Invalid environment configuration:\n${configIssues.map((issue) => `  - ${issue}`).join("\n")}`);
 }
 
-const llmApiKey = env.AI_PROVIDER === "nim" ? env.NIM_API_KEY! : env.OPENAI_API_KEY!;
-const llmBaseUrl = env.AI_PROVIDER === "nim" ? env.NIM_BASE_URL : env.OPENAI_BASE_URL;
-const llmModel = env.AI_PROVIDER === "nim" ? env.NIM_MODEL! : env.OPENAI_MODEL;
+const llmApiKey =
+  env.AI_PROVIDER === "nim" ? env.NIM_API_KEY!
+  : env.AI_PROVIDER === "groq" ? env.GROQ_API_KEY!
+  : env.OPENAI_API_KEY!;
+const llmBaseUrl =
+  env.AI_PROVIDER === "nim" ? env.NIM_BASE_URL
+  : env.AI_PROVIDER === "groq" ? "https://api.groq.com/openai/v1"
+  : env.OPENAI_BASE_URL;
+const llmModel =
+  env.AI_PROVIDER === "nim" ? env.NIM_MODEL!
+  : env.AI_PROVIDER === "groq" ? env.GROQ_MODEL
+  : env.OPENAI_MODEL;
+const llmVisionModel =
+  env.AI_PROVIDER === "groq" ? env.GROQ_VISION_MODEL : llmModel;
 
 const twilioReady =
   isConfiguredSecret(env.TWILIO_ACCOUNT_SID) &&
@@ -121,6 +141,8 @@ export const config = {
   llmApiKey,
   llmBaseUrl,
   llmModel,
+  /** Vision model (same as llmModel unless Groq, which uses Llama-4-Scout). */
+  llmVisionModel,
   /** An optional OpenAI key used only for gpt-4o-mini-tts audio generation. */
   openAiTtsApiKey: openAiConfigured ? env.OPENAI_API_KEY! : null,
   openAiTtsEnabled: openAiConfigured,
