@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import type { Language } from "@/types/domain";
+import type { CallLanguage } from "@/lib/languages";
 
 /**
  * Time helpers. All storage is UTC; conversions happen at the edges
@@ -54,17 +54,27 @@ export function slotKeyForTime(time: string): SlotKey {
   return "night";
 }
 
-const SLOT_LABELS: Record<Language, Record<SlotKey, string>> = {
+const SLOT_LABELS: Record<CallLanguage, Record<SlotKey, string>> = {
   hi: { morning: "सुबह", afternoon: "दोपहर", evening: "शाम", night: "रात" },
   en: { morning: "morning", afternoon: "afternoon", evening: "evening", night: "night" },
+  bn: { morning: "সকালের", afternoon: "দুপুরের", evening: "সন্ধ্যার", night: "রাতের" },
+  ar: { morning: "الصباح", afternoon: "الظهيرة", evening: "المساء", night: "الليل" },
+  fr: { morning: "matin", afternoon: "après-midi", evening: "soir", night: "nuit" },
+  pt: { morning: "manhã", afternoon: "tarde", evening: "noite", night: "noite" },
+  af: { morning: "oggend", afternoon: "middag", evening: "aand", night: "nag" },
+  am: { morning: "ጠዋት", afternoon: "ከሰዓት", evening: "ምሽት", night: "ሌሊት" },
+  sw: { morning: "asubuhi", afternoon: "mchana", evening: "jioni", night: "usiku" },
+  ha: { morning: "safe", afternoon: "rana", evening: "yamma", night: "dare" },
+  yo: { morning: "òwúrọ̀", afternoon: "ọ̀sán", evening: "ìrọ̀lẹ́", night: "alẹ́" },
+  es: { morning: "mañana", afternoon: "tarde", evening: "noche", night: "noche" },
 };
 
-export function slotLabel(time: string, lang: Language): string {
+export function slotLabel(time: string, lang: CallLanguage): string {
   return SLOT_LABELS[lang][slotKeyForTime(time)];
 }
 
 /** Human 12-hour label, e.g. "8:00 AM" / "8:00 सुबह". */
-export function pretty12h(time: string, lang: Language): string {
+export function pretty12h(time: string, lang: CallLanguage): string {
   const [h, m] = time.split(":").map((x) => Number.parseInt(x, 10));
   const dt = DateTime.fromObject({ hour: h, minute: m });
   const base = dt.toFormat("h:mm");

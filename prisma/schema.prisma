@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -34,7 +35,7 @@ model Patient {
 model ScanBatch {
   id                String      @id @default(cuid())
   patientId         String
-  status            String      @default("processing") // processing|extracted|confirmed|failed
+  status            String      @default("processing") // processing|extracted|confirming|confirmed|failed
   rawExtractionJson String?
   createdAt         DateTime    @default(now())
   photos            ScanPhoto[]
@@ -192,4 +193,17 @@ model AudioAsset {
   scriptText String
   filePath   String
   createdAt  DateTime @default(now())
+}
+
+// Local, per-day reservations for actual outbound OpenAI requests. This is
+// intentionally separate from household data: erasing a demo household must
+// not reset its cost guardrail.
+model OpenAiBudget {
+  id         String   @id // "YYYY-MM-DD:llm" or "YYYY-MM-DD:tts"
+  day        String
+  operation  String   // llm|tts
+  requests   Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@index([day, operation])
 }

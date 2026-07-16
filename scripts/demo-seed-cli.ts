@@ -1,5 +1,3 @@
-import fetch from "node-fetch";
-
 async function main() {
   const url = "http://localhost:3000/api/demo/seed";
   console.log(`Sending POST to ${url}...`);

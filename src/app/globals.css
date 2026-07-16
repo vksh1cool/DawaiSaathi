@@ -36,6 +36,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
 /* Hindi needs slightly larger base + looser leading (02-DESIGN §3.2) */
 html[lang="hi"] body {
   font-size: 17px;
@@ -44,6 +49,22 @@ html[lang="hi"] body {
 
 button {
   cursor: pointer;
+}
+
+/* Press feedback is intentionally subtle and limited to transform. It gives
+   large caregiver controls a physical response without delaying frequent use. */
+.pressable {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pressable:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .pressable:hover:not(:disabled) {
+    filter: brightness(0.98);
+  }
 }
 
 /* Visible focus rings everywhere (accessibility §9) */
@@ -67,7 +88,45 @@ button {
 }
 
 .animate-dose-pulse {
-  animation: dose-pulse 300ms ease-out;
+  animation: dose-pulse 300ms var(--ease-out);
+}
+
+/* Onboarding appears rarely, so a restrained entrance helps establish the
+   next step without making repeated app actions feel slow. */
+@keyframes onboarding-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.onboarding-step {
+  animation: onboarding-enter 220ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+
+  .animate-dose-pulse,
+  .animate-pulse,
+  .animate-spin,
+  .onboarding-step {
+    animation: none !important;
+  }
+
+  .pressable,
+  .pressable:active {
+    transition-duration: 0ms !important;
+    transform: none !important;
+  }
 }
 
 .card-shadow {

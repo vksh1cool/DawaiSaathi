@@ -1,38 +1,49 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Play, Check } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { ScheduleCard, type ScheduleDraft } from "@/components/ScheduleCard";
-import { PrimaryButton, GhostButton, Banner, Spinner, TextInput } from "@/components/ui";
+import { PrimaryButton, GhostButton, Banner, ModalDialog, Spinner, TextInput } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/provider";
 import { apiGet, apiJson, ApiError } from "@/lib/api-client";
 import type { SerializedMedication } from "@/lib/medications";
 import type { ScheduleSuggestion } from "@/types/domain";
+import { speechLocale, type CallLanguage } from "@/lib/languages";
+import { DateTime } from "luxon";
 
 export default function SchedulePage() {
   const { t } = useI18n();
   const router = useRouter();
   const [drafts, setDrafts] = useState<ScheduleDraft[] | null>(null);
   const [patientName, setPatientName] = useState("");
+  const [patientTimezone, setPatientTimezone] = useState("Asia/Kolkata");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mtxGuard, setMtxGuard] = useState<{ meds: ScheduleDraft[]; typed: string } | null>(null);
+  const [mtxGuard, setMtxGuard] = useState<{ typed: string } | null>(null);
+  const [emptyTimesGuard, setEmptyTimesGuard] = useState<ScheduleDraft[] | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [patientLanguage, setPatientLanguage] = useState<CallLanguage>("hi");
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const previewRequestRef = useRef(0);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoadError(null);
+    setDrafts(null);
     (async () => {
       const [medsRes, sugRes, hh] = await Promise.all([
         apiGet<{ medications: SerializedMedication[] }>("/api/medications"),
         apiGet<{ suggestions: ScheduleSuggestion[] }>("/api/schedules/suggest").catch(() => ({
           suggestions: [] as ScheduleSuggestion[],
         })),
-        apiGet<{ household: { patient: { name: string } | null } }>("/api/household").catch(
-          () => ({ household: { patient: null } }),
-        ),
+        apiGet<{ household: { patient: { name: string; timezone: string; language: CallLanguage } | null } }>("/api/household"),
       ]);
       setPatientName(hh.household.patient?.name ?? "");
+      setPatientTimezone(hh.household.patient?.timezone ?? "Asia/Kolkata");
+      setPatientLanguage(hh.household.patient?.language ?? "hi");
       const sugMap = new Map(sugRes.suggestions.map((s) => [s.medicationId, s]));
       setDrafts(
         medsRes.medications.map((m) => {
@@ -50,65 +61,175 @@ export default function SchedulePage() {
           } as ScheduleDraft & { _mtx?: boolean };
         }),
       );
-    })().catch(() => setDrafts([]));
+    })().catch(() => {
+      setLoadError(t("schedule.loadError"));
+      setDrafts([]);
+    });
+  }, [t]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const stopPreview = () => {
+    previewRequestRef.current += 1;
+    previewAudioRef.current?.pause();
+    previewAudioRef.current = null;
+    window.speechSynthesis?.cancel();
+    setPreviewing(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      previewRequestRef.current += 1;
+      previewAudioRef.current?.pause();
+      window.speechSynthesis?.cancel();
+    };
   }, []);
+
+  const speakPreview = (text: string, requestId: number) => {
+    if (!("speechSynthesis" in window)) {
+      setPreviewing(false);
+      setError(t("schedule.previewUnavailable"));
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = speechLocale(patientLanguage);
+    utterance.rate = 0.9;
+    const finish = () => {
+      if (requestId === previewRequestRef.current) setPreviewing(false);
+    };
+    utterance.onend = finish;
+    utterance.onerror = () => {
+      finish();
+      if (requestId === previewRequestRef.current) setError(t("schedule.previewUnavailable"));
+    };
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  };
 
   const previewCall = async () => {
     if (!drafts) return;
     const evening = drafts.find((d) => d.times.includes("20:00")) ? "20:00" : drafts[0]?.times[0];
     if (!evening) return;
+    const selected = drafts.filter((draft) => draft.times.includes(evening));
+    if (selected.length === 0) return;
+    stopPreview();
+    const requestId = previewRequestRef.current;
     setPreviewing(true);
+    setError(null);
     try {
-      const res = await apiJson<{ audioUrl: string }>("/api/tts/preview", "POST", { time: evening });
+      const res = await apiJson<{ audioUrl: string | null; scriptText: string }>("/api/tts/preview", "POST", {
+        time: evening,
+        schedules: selected.map((draft) => ({ medicationId: draft.medicationId, foodRelation: draft.foodRelation })),
+      });
+      if (requestId !== previewRequestRef.current) return;
+      if (!res.audioUrl) {
+        speakPreview(res.scriptText, requestId);
+        return;
+      }
       const audio = new Audio(res.audioUrl);
-      await audio.play();
+      previewAudioRef.current = audio;
+      let usedFallback = false;
+      const useFallback = () => {
+        if (usedFallback || requestId !== previewRequestRef.current) return;
+        usedFallback = true;
+        previewAudioRef.current = null;
+        speakPreview(res.scriptText, requestId);
+      };
+      audio.onended = () => {
+        if (requestId === previewRequestRef.current) setPreviewing(false);
+      };
+      audio.onerror = useFallback;
+      await audio.play().catch(useFallback);
     } catch {
-      setError("Preview unavailable — voice will be ready once configured.");
-    } finally {
-      setPreviewing(false);
+      if (requestId === previewRequestRef.current) {
+        setPreviewing(false);
+        setError(t("schedule.previewUnavailable"));
+      }
     }
   };
 
-  const doSave = async (list: ScheduleDraft[]) => {
+  const doSave = async (list: ScheduleDraft[], weeklyOverridePatientName?: string) => {
     setSaving(true);
     setError(null);
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = DateTime.now().setZone(patientTimezone).toFormat("yyyy-MM-dd");
       await apiJson("/api/schedules", "POST", {
-        schedules: list
-          .filter((d) => d.times.length > 0)
-          .map((d) => ({
-            medicationId: d.medicationId,
-            times: d.times,
-            foodRelation: d.foodRelation,
-            startDate: today,
-          })),
+        schedules: list.map((d) => ({
+          medicationId: d.medicationId,
+          times: d.times,
+          foodRelation: d.foodRelation,
+          startDate: today,
+        })),
+        weeklyOverridePatientName,
       });
       router.push("/");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not save schedule.");
+      setError(e instanceof ApiError ? e.message : t("schedule.saveError"));
       setSaving(false);
       setMtxGuard(null);
     }
   };
 
-  const start = () => {
+  const continueAfterEmptyTimesGuard = () => {
     if (!drafts) return;
     // Methotrexate weekly guard (PRD F2).
     const mtx = drafts.filter(
       (d) => (d as ScheduleDraft & { _mtx?: boolean })._mtx && d.times.length > 0,
     );
     if (mtx.length > 0) {
-      setMtxGuard({ meds: mtx, typed: "" });
+      if (!patientName.trim()) {
+        setError(t("schedule.loadError"));
+        return;
+      }
+      setMtxGuard({ typed: "" });
       return;
     }
-    doSave(drafts);
+    void doSave(drafts);
+  };
+
+  const start = () => {
+    if (!drafts) return;
+    const withoutReminders = drafts.filter((draft) => draft.times.length === 0);
+    if (withoutReminders.length > 0) {
+      setEmptyTimesGuard(withoutReminders);
+      return;
+    }
+    continueAfterEmptyTimesGuard();
   };
 
   if (!drafts) {
     return (
       <AppShell>
         <Spinner label={t("common.loading")} />
+      </AppShell>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <AppShell>
+        <Banner tone="warn">
+          <p>{loadError}</p>
+          <GhostButton className="mt-3" onClick={load}>
+            {t("common.tryAgain")}
+          </GhostButton>
+        </Banner>
+      </AppShell>
+    );
+  }
+
+  if (drafts.length === 0) {
+    return (
+      <AppShell>
+        <h1 className="mb-4 text-2xl font-bold">{t("schedule.title")}</h1>
+        <Banner tone="info">
+          <p>{t("schedule.empty")}</p>
+          <Link href="/scan" className="mt-3 inline-block">
+            <PrimaryButton>{t("schedule.goToScan")}</PrimaryButton>
+          </Link>
+        </Banner>
       </AppShell>
     );
   }
@@ -139,31 +260,58 @@ export default function SchedulePage() {
         </PrimaryButton>
       </div>
 
-      {mtxGuard && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-          <div className="modal-shadow w-full max-w-[440px] rounded-[16px] bg-[var(--color-surface)] p-5">
-            <p className="mb-3 text-sm font-medium text-[var(--color-danger)]">
-              {t("schedule.mtx_warning", { name: patientName })}
-            </p>
-            <TextInput
-              value={mtxGuard.typed}
-              onChange={(e) => setMtxGuard({ ...mtxGuard, typed: e.target.value })}
-              placeholder={patientName}
-            />
-            <div className="mt-3 flex gap-2">
-              <GhostButton className="flex-1" onClick={() => setMtxGuard(null)}>
-                {t("common.cancel")}
-              </GhostButton>
-              <PrimaryButton
-                className="flex-1"
-                disabled={mtxGuard.typed.trim() !== patientName.trim() || saving}
-                onClick={() => doSave(drafts)}
-              >
-                {t("common.confirm")}
-              </PrimaryButton>
-            </div>
+      {emptyTimesGuard && (
+        <ModalDialog
+          title={t("schedule.stopRemindersTitle")}
+          onClose={saving ? undefined : () => setEmptyTimesGuard(null)}
+        >
+          <p className="text-sm leading-6 text-[var(--color-text-muted)]">{t("schedule.stopRemindersBody")}</p>
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm font-medium text-[var(--color-text)]">
+            {emptyTimesGuard.map((draft) => <li key={draft.medicationId}>{draft.brandName}</li>)}
+          </ul>
+          <div className="mt-5 flex gap-3">
+            <GhostButton className="flex-1" onClick={() => setEmptyTimesGuard(null)}>
+              {t("common.cancel")}
+            </GhostButton>
+            <PrimaryButton
+              className="!bg-[var(--color-danger)] flex-1"
+              disabled={saving}
+              onClick={() => {
+                setEmptyTimesGuard(null);
+                continueAfterEmptyTimesGuard();
+              }}
+            >
+              {t("schedule.stopRemindersConfirm")}
+            </PrimaryButton>
           </div>
-        </div>
+        </ModalDialog>
+      )}
+
+      {mtxGuard && (
+        <ModalDialog
+          title={t("schedule.mtx_warning", { name: patientName })}
+          onClose={saving ? undefined : () => setMtxGuard(null)}
+        >
+          <TextInput
+            value={mtxGuard.typed}
+            onChange={(e) => setMtxGuard({ typed: e.target.value })}
+            placeholder={patientName}
+            autoComplete="name"
+            aria-label={t("schedule.mtx_warning", { name: patientName })}
+          />
+          <div className="mt-5 flex gap-3">
+            <GhostButton className="flex-1" disabled={saving} onClick={() => setMtxGuard(null)}>
+              {t("common.cancel")}
+            </GhostButton>
+            <PrimaryButton
+              className="flex-1"
+              disabled={mtxGuard.typed.trim() !== patientName.trim() || saving}
+              onClick={() => void doSave(drafts, mtxGuard.typed)}
+            >
+              {t("common.confirm")}
+            </PrimaryButton>
+          </div>
+        </ModalDialog>
       )}
     </AppShell>
   );

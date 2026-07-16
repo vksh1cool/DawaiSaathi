@@ -118,9 +118,9 @@ Demo-kit expected results (must match seed CSVs in §10 — tested by `generics.
 | Telma 40 | 7.80 | 1.00 | 30 | **204** | high |
 | Amlong 5 | 3.53 | 0.34 | 30 | **96** | high |
 | Glycomet 500 | 1.75 | 0.51 | 60 | **74** | high |
-| Ecosprin 75 | 0.66 | 0.28 | 30 | **11** | high |
+| Ecosprin 75 | 0.66 | 0.28 | 30 | **12** | high |
 | Warf 5 | 4.27 | — | 30 | null (no JA match) | — |
-| **Total** | | | | **₹385/month** (AC-6.3 ✅ 350–450) | |
+| **Total** | | | | **₹386/month** (AC-6.3 ✅ 350–450) | |
 
 ## 5. Flow D — Schedule → DoseEvents → TTS pre-generation
 

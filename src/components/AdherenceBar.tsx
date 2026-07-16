@@ -14,7 +14,7 @@ export function AdherenceBar({ percent, byDay }: { percent: number; byDay: DayBu
         </span>
         <span className="text-sm font-semibold">{t("home.takenPercent", { percent })}</span>
       </div>
-      <div className="flex gap-1">
+      <div className="flex gap-1" role="list" aria-label={t("home.weekAdherence")}>
         {byDay.map((d) => {
           const color =
             d.missed > 0
@@ -22,7 +22,13 @@ export function AdherenceBar({ percent, byDay }: { percent: number; byDay: DayBu
               : d.confirmed > 0
                 ? "bg-[var(--color-success)]"
                 : "bg-[var(--color-border)]";
-          return <div key={d.date} className={`h-2 flex-1 rounded-full ${color}`} title={d.date} />;
+          const label = t("home.adherenceDay", {
+            date: d.date,
+            confirmed: d.confirmed,
+            missed: d.missed,
+            pending: d.pending,
+          });
+          return <div key={d.date} role="listitem" className={`h-2 flex-1 rounded-full ${color}`} title={label} aria-label={label} />;
         })}
       </div>
     </div>

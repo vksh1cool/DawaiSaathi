@@ -63,20 +63,24 @@ export function MedReviewCard({
                 onChange={(e) => setSalt(i, { inn: e.target.value, fdaSearchName: e.target.value })}
                 className="min-h-[44px] flex-1 rounded-[10px] border border-[var(--color-border)] px-2.5 text-base outline-none focus:border-[var(--color-primary)]"
                 placeholder="telmisartan"
+                aria-label={`${t("review.salt")} ${i + 1}`}
               />
               <input
+                type="number"
                 value={s.strengthValue ?? ""}
                 inputMode="decimal"
-                onChange={(e) =>
-                  setSalt(i, { strengthValue: e.target.value ? Number(e.target.value) : null })
-                }
+                min="0"
+                step="any"
+                onChange={(e) => setSalt(i, { strengthValue: finiteNumber(e.target.value) })}
                 className="min-h-[44px] w-16 rounded-[10px] border border-[var(--color-border)] px-2 text-base outline-none focus:border-[var(--color-primary)]"
                 placeholder="40"
+                aria-label={`${t("review.salt")} ${i + 1} strength`}
               />
               <select
                 value={s.strengthUnit ?? "mg"}
                 onChange={(e) => setSalt(i, { strengthUnit: e.target.value as StrengthUnit })}
                 className="min-h-[44px] rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 text-sm outline-none"
+                aria-label={`${t("review.salt")} ${i + 1} unit`}
               >
                 {UNITS.map((u) => (
                   <option key={u} value={u}>
@@ -86,8 +90,9 @@ export function MedReviewCard({
               </select>
               {draft.salts.length > 1 && (
                 <button
+                  type="button"
                   onClick={() => set({ salts: draft.salts.filter((_, idx) => idx !== i) })}
-                  className="p-2 text-[var(--color-text-muted)]"
+                  className="pressable min-h-[44px] min-w-[44px] rounded-[10px] p-2 text-[var(--color-text-muted)] transition-transform duration-150 ease-[var(--ease-out)]"
                   aria-label={t("common.remove")}
                 >
                   <Trash2 size={16} />
@@ -96,6 +101,7 @@ export function MedReviewCard({
             </div>
           ))}
           <button
+            type="button"
             onClick={() =>
               set({
                 salts: [
@@ -104,7 +110,7 @@ export function MedReviewCard({
                 ],
               })
             }
-            className="flex items-center gap-1 self-start text-sm font-medium text-[var(--color-primary)]"
+            className="pressable flex min-h-[44px] items-center gap-1 self-start rounded-[10px] px-2 text-sm font-medium text-[var(--color-primary)] transition-transform duration-150 ease-[var(--ease-out)]"
           >
             <Plus size={14} /> {t("review.addSalt")}
           </button>
@@ -131,8 +137,11 @@ export function MedReviewCard({
         <ConfidenceField
           label={t("review.pack")}
           value={draft.packSize?.toString() ?? ""}
+          type="number"
           inputMode="numeric"
-          onChange={(v) => set({ packSize: v ? Number.parseInt(v, 10) : null })}
+          min={1}
+          step={1}
+          onChange={(v) => set({ packSize: finiteInteger(v) })}
           placeholder="30"
         />
       </div>
@@ -141,14 +150,18 @@ export function MedReviewCard({
         <ConfidenceField
           label={t("review.mrp")}
           value={draft.mrpInr?.toString() ?? ""}
+          type="number"
           confidence={draft.fieldConfidence.mrpInr}
           inputMode="decimal"
-          onChange={(v) => set({ mrpInr: v ? Number(v) : null })}
+          min={0}
+          step="0.01"
+          onChange={(v) => set({ mrpInr: finiteNumber(v) })}
           placeholder="234"
         />
         <ConfidenceField
           label={t("review.expiry")}
           value={draft.expiryDate ?? ""}
+          type="month"
           confidence={draft.fieldConfidence.expiryDate}
           onChange={(v) => set({ expiryDate: v || null })}
           placeholder="2027-08"
@@ -163,11 +176,23 @@ export function MedReviewCard({
       {draft.highRisk && <HighRiskBanner name={draft.brandName ?? draft.displayGeneric} />}
 
       <button
+        type="button"
         onClick={onRemove}
-        className="flex items-center gap-1 self-start text-sm font-medium text-[var(--color-danger)]"
+        className="pressable flex min-h-[44px] items-center gap-1 self-start rounded-[10px] px-2 text-sm font-medium text-[var(--color-danger)] transition-transform duration-150 ease-[var(--ease-out)]"
       >
         <Trash2 size={14} /> {t("common.remove")}
       </button>
     </Card>
   );
+}
+
+function finiteNumber(value: string): number | null {
+  if (value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function finiteInteger(value: string): number | null {
+  const parsed = finiteNumber(value);
+  return parsed !== null && Number.isInteger(parsed) ? parsed : null;
 }

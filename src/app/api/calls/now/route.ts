@@ -20,7 +20,9 @@ export const POST = withErrorBoundary(async (req: Request) => {
 
   const { groups } = await getToday(patient);
   const group = groups.find((g) => g.time === time);
-  if (!group) throw new AppError("VALIDATION", "No medicines scheduled at that time today.");
+  if (!group || group.status !== "upcoming") {
+    throw new AppError("VALIDATION", "No pending medicines are scheduled at that time today.");
+  }
 
   const result = await placeGroupReminder({
     patient,
@@ -28,5 +30,10 @@ export const POST = withErrorBoundary(async (req: Request) => {
     scheduledAtUtc: new Date(group.scheduledAtUtc),
     mode: "twilio",
   });
+  // `placeGroupReminder` restores the events for a retry when Twilio rejects
+  // the call. Do not report a successful 200 to the caregiver in that case.
+  if (!result.placed) {
+    throw new AppError("UPSTREAM_TWILIO", "We couldn't place the call. Please try again.");
+  }
   return NextResponse.json({ reminderCallId: result.reminderCallId, placed: result.placed });
 });

@@ -8,11 +8,12 @@ import { AppShell } from "@/components/AppShell";
 import { DoseGroupCard } from "@/components/DoseGroupCard";
 import { AdherenceBar } from "@/components/AdherenceBar";
 import { SimulatedCallModal } from "@/components/SimulatedCallModal";
-import { PrimaryButton, Card, Spinner } from "@/components/ui";
+import { PrimaryButton, Card, Spinner, Toast } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/provider";
 import { useAppInfo } from "@/lib/app-info";
 import { apiGet, apiJson, ApiError } from "@/lib/api-client";
 import { formatInr } from "@/lib/util/money";
+import { useTimedMessage } from "@/lib/use-timed-message";
 import type { TodayGroup, Finding } from "@/types/domain";
 
 type Today = { groups: TodayGroup[] };
@@ -28,48 +29,53 @@ export default function HomePage() {
   const [today, setToday] = useState<Today>({ groups: [] });
   const [adherence, setAdherence] = useState<Adherence | null>(null);
   const [topFinding, setTopFinding] = useState<Finding | null>(null);
-  const [savings, setSavings] = useState(0);
+  const [savings, setSavings] = useState<number | null>(null);
   const [patientName, setPatientName] = useState("");
   const [openFindings, setOpenFindings] = useState(0);
   const [simTime, setSimTime] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-
-  // Onboarding redirect.
-  useEffect(() => {
-    if (info && !info.hasHousehold) router.replace("/onboarding");
-  }, [info, router]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { message, showMessage } = useTimedMessage();
 
   const load = useCallback(async () => {
     try {
-      const [meds, todayRes, adh, inter, gen, hh] = await Promise.all([
+      setLoadError(null);
+      const [meds, todayRes, hh] = await Promise.all([
         apiGet<{ medications: unknown[] }>("/api/medications"),
         apiGet<Today>("/api/today"),
-        apiGet<Adherence>("/api/adherence?days=7"),
-        apiGet<{ open: Finding[] }>("/api/interactions"),
-        apiGet<{ totalMonthlySavingsInr: number }>("/api/generics"),
         apiGet<{ household: { patient: { name: string } | null } }>("/api/household"),
       ]);
       setHasMeds(meds.medications.length > 0);
       setToday(todayRes);
-      setAdherence(adh);
-      setTopFinding(inter.open[0] ?? null);
-      setOpenFindings(inter.open.length);
-      setSavings(gen.totalMonthlySavingsInr);
       setPatientName(hh.household.patient?.name ?? "");
+
+      // These enrich the dashboard but should never turn a usable medicine
+      // list into a blank error screen when one auxiliary endpoint is down.
+      const [adh, inter, gen] = await Promise.allSettled([
+        apiGet<Adherence>("/api/adherence?days=7"),
+        apiGet<{ open: Finding[] }>("/api/interactions"),
+        apiGet<{ totalMonthlySavingsInr: number }>("/api/generics"),
+      ]);
+      setAdherence(adh.status === "fulfilled" ? adh.value : null);
+      if (inter.status === "fulfilled") {
+        setTopFinding(inter.value.open[0] ?? null);
+        setOpenFindings(inter.value.open.length);
+      }
+      setSavings(gen.status === "fulfilled" ? gen.value.totalMonthlySavingsInr : null);
+    } catch {
+      setLoadError(t("home.loadError"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(id);
-  }, [toast]);
+    if (!info) return;
+    if (!info.hasHousehold) {
+      router.replace("/onboarding");
+      return;
+    }
+    void load();
+  }, [info, load, router]);
 
   // Poll while any dose is still upcoming/calling (captures the live "confirmed" flip).
   useEffect(() => {
@@ -81,27 +87,43 @@ export default function HomePage() {
 
   const callNow = async (time: string) => {
     try {
-      await apiJson("/api/calls/now", "POST", { time });
-      setToast(`📞 ${patientName}…`);
-      load();
+      const result = await apiJson<{ placed: boolean }>("/api/calls/now", "POST", { time });
+      if (!result.placed) throw new ApiError("UPSTREAM_TWILIO", t("home.callFailed"));
+      showMessage(t("home.callStarting", { name: patientName }));
+      void load();
     } catch (e) {
       // Telephony off → fall back to simulated call.
       if (e instanceof ApiError && e.code === "TELEPHONY_DISABLED") setSimTime(time);
-      else setToast(e instanceof ApiError ? e.message : "Call failed");
+      else showMessage(e instanceof ApiError ? e.message : t("home.callFailed"));
     }
   };
 
   const markGroup = async (group: TodayGroup) => {
-    await Promise.all(
-      group.doseEventIds.map((id) => apiJson(`/api/dose-events/${id}/mark`, "POST", { status: "confirmed" })),
-    );
-    load();
+    try {
+      await apiJson("/api/dose-events/group/mark", "POST", { doseEventIds: group.doseEventIds });
+      void load();
+    } catch (error) {
+      showMessage(error instanceof ApiError ? error.message : t("home.markFailed"));
+    }
   };
 
   if (loading) {
     return (
       <AppShell safetyBadge={openFindings}>
         <Spinner label={t("common.loading")} />
+      </AppShell>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <AppShell safetyBadge={openFindings}>
+        <Card tone="warn">
+          <p className="text-sm">{loadError}</p>
+          <PrimaryButton className="mt-3" onClick={load}>
+            {t("common.tryAgain")}
+          </PrimaryButton>
+        </Card>
       </AppShell>
     );
   }
@@ -127,7 +149,9 @@ export default function HomePage() {
       {/* Top interaction alert */}
       {topFinding && (
         <Link href="/safety" className="mb-3 block">
-          <div className="flex items-center gap-2 rounded-[12px] bg-[var(--color-danger-soft)] px-3 py-3 text-[var(--color-danger)]">
+          <div
+            className={`flex items-center gap-2 rounded-[12px] px-3 py-3 ${findingTone(topFinding.severity)}`}
+          >
             <AlertTriangle size={20} className="shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-bold uppercase">{t(`safety.sev${cap(topFinding.severity)}`)}</p>
@@ -142,7 +166,7 @@ export default function HomePage() {
 
       <div className="mb-2 flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t("home.today")}</h1>
-        <Link href="/history" className="text-sm font-medium text-[var(--color-primary)]">
+        <Link href="/history" className="pressable -mr-2 flex min-h-[44px] items-center rounded-[10px] px-2 text-sm font-medium text-[var(--color-primary)]">
           {t("home.history")}
         </Link>
       </div>
@@ -160,6 +184,7 @@ export default function HomePage() {
             <DoseGroupCard
               key={g.time}
               group={g}
+              patientName={patientName}
               demoMode={info?.demoMode ?? false}
               onCallNow={callNow}
               onSimulate={(time) => setSimTime(time)}
@@ -177,32 +202,28 @@ export default function HomePage() {
         </div>
       )}
 
-      <Link href="/savings" className="mt-4 block">
-        <div className="flex items-center justify-between rounded-[12px] bg-[var(--color-success-soft)] px-4 py-3">
-          <span className="flex items-center gap-2 font-medium text-[var(--color-success)]">
-            <IndianRupee size={18} />
-            {t("home.savingTeaser", { amount: formatInr(savings), per: t("common.perMonth") })}
-          </span>
-          <ChevronRight size={18} className="text-[var(--color-success)]" />
-        </div>
-      </Link>
-
-      {toast && (
-        <div
-          className="fixed bottom-32 left-1/2 z-40 -translate-x-1/2 rounded-full bg-[var(--color-text)] px-4 py-2 text-sm text-white"
-          onAnimationEnd={() => setToast(null)}
-        >
-          {toast}
-        </div>
+      {savings !== null && savings > 0 && (
+        <Link href="/savings" className="mt-4 block">
+          <div className="flex items-center justify-between rounded-[12px] bg-[var(--color-success-soft)] px-4 py-3">
+            <span className="flex items-center gap-2 font-medium text-[var(--color-success)]">
+              <IndianRupee size={18} />
+              {t("home.savingTeaser", { amount: formatInr(savings), per: t("common.perMonth") })}
+            </span>
+            <ChevronRight size={18} className="text-[var(--color-success)]" />
+          </div>
+        </Link>
       )}
+
+      {message && <Toast>{message}</Toast>}
 
       {simTime && (
         <SimulatedCallModal
           time={simTime}
           patientName={patientName}
-          onClose={() => {
+          onClose={(resolved) => {
             setSimTime(null);
-            load();
+            if (!resolved) showMessage(t("call.simFailed"));
+            void load();
           }}
         />
       )}
@@ -211,3 +232,10 @@ export default function HomePage() {
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+function findingTone(severity: Finding["severity"]) {
+  if (severity === "major") return "bg-[var(--color-danger-soft)] text-[var(--color-danger)]";
+  if (severity === "moderate") return "bg-[var(--color-warn-soft)] text-[var(--color-warn)]";
+  if (severity === "minor") return "bg-[var(--color-info-soft)] text-[var(--color-info)]";
+  return "bg-[var(--color-unverified-soft)] text-[var(--color-unverified)]";
+}

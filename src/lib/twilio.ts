@@ -2,6 +2,8 @@ import twilio from "twilio";
 import { config } from "@/lib/config";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+import { twilioVoiceLocale, type CallLanguage, type TwilioVoiceLocale } from "@/lib/languages";
+import { accessGateEnabled, createAudioAccessToken } from "@/lib/access-gate";
 
 /** Twilio client + call placement + webhook signature validation (Arch §10). */
 
@@ -60,9 +62,21 @@ export async function readWebhook(
   return { params, valid, url };
 }
 
-/** Build the public audio URL Twilio should fetch. */
-export function audioUrl(file: string): string {
-  return `${config.publicBaseUrl ?? ""}/api/audio/${file}`;
+/** Build a short-lived, file-bound audio URL Twilio can fetch without a browser cookie. */
+export async function audioUrl(file: string): Promise<string> {
+  const base = `${config.publicBaseUrl ?? ""}/api/audio/${file}`;
+  if (!accessGateEnabled()) return base;
+  const token = await createAudioAccessToken(file);
+  return `${base}?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Locale passed to Twilio <Say>. `null` means the language can only be played
+ * from generated audio; callers must not silently fall back to another spoken
+ * language for a medicine reminder.
+ */
+export function voiceLocale(language: CallLanguage): TwilioVoiceLocale | null {
+  return twilioVoiceLocale(language);
 }
 
 export { twilio };

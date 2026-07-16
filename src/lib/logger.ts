@@ -7,6 +7,10 @@ import pino from "pino";
 export const logger = pino({
   level: process.env.LOG_LEVEL ?? "info",
   base: undefined,
+  redact: {
+    paths: ["phoneE164", "patient.phoneE164", "to", "from", "*.phoneE164", "*.to", "*.from"],
+    censor: "[REDACTED]",
+  },
   transport:
     process.env.NODE_ENV !== "production"
       ? { target: "pino-pretty", options: { colorize: true, translateTime: "SYS:HH:MM:ss" } }

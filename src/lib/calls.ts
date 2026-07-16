@@ -1,6 +1,8 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { parseStringArray } from "@/lib/db";
 import { config } from "@/lib/config";
+import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { ensureAudio } from "@/lib/tts";
 import { placeCall } from "@/lib/twilio";
@@ -8,17 +10,43 @@ import { buildReminderScripts } from "@/lib/ivr/scripts";
 import { getSlotMedsForEvents } from "@/lib/reminder";
 import { getHousehold } from "@/lib/household";
 import { utcToLocalTime, slotLabel } from "@/lib/util/dates";
+import { isCallLanguage, twilioVoiceLocale, type CallLanguage } from "@/lib/languages";
 import type { Patient, ReminderCall } from "@prisma/client";
-import type { Language } from "@/types/domain";
 
 /** Shared reminder-call logic used by the worker, webhooks, and simulator (Arch §10, §12.3). */
 
-export type AudioSet = { medlist: string; menu: string; thanks: string; noinput: string };
+export type AudioFallbacks = {
+  medlist: string;
+  menu: string;
+  thanks: string;
+  noinput: string;
+};
+
+/**
+ * An asset is nullable only when OpenAI TTS was unavailable and no cached
+ * file existed. Twilio then uses the paired, localized `<Say>` fallback
+ * instead of abandoning a real reminder call (Data-Flow §12).
+ */
+export type AudioSet = {
+  language: CallLanguage;
+  medlist: string | null;
+  menu: string | null;
+  thanks: string | null;
+  noinput: string | null;
+  fallback: AudioFallbacks;
+};
+
+export type AudioUrls = {
+  medlistUrl: string | null;
+  menuUrl: string | null;
+  thanksUrl: string | null;
+  noinputUrl: string | null;
+};
 
 export type PlaceResult = {
   reminderCallId: string;
   audioSet: AudioSet;
-  audioUrls: { medlistUrl: string; menuUrl: string; thanksUrl: string; noinputUrl: string };
+  audioUrls: AudioUrls;
   placed: boolean;
 };
 
@@ -30,51 +58,94 @@ export async function placeGroupReminder(opts: {
   mode: "twilio" | "simulated";
 }): Promise<PlaceResult> {
   const { patient, doseEventIds, scheduledAtUtc, mode } = opts;
+  const candidateEvents = await prisma.doseEvent.findMany({
+    where: { id: { in: doseEventIds }, patientId: patient.id, status: "scheduled" },
+    select: { id: true, attempts: true },
+  });
+  if (candidateEvents.length === 0) {
+    throw new AppError("CONFLICT", "This reminder is already being handled.");
+  }
+
+  // A mixed group can occur when a caregiver has already marked one medicine
+  // taken. Only the still-scheduled medicines are included in the call.
+  const pendingDoseEventIds = candidateEvents.map((event) => event.id);
   const tz = patient.timezone || config.defaultTz;
   const time = utcToLocalTime(scheduledAtUtc, tz);
 
-  const slot = await getSlotMedsForEvents(doseEventIds);
+  const slot = await getSlotMedsForEvents(pendingDoseEventIds);
   const hh = await getHousehold();
   const scripts = buildReminderScripts({
     patientName: patient.name,
     time,
     meds: slot.meds,
     foodRelation: slot.foodRelation,
-    language: patient.language as Language,
+    language: patient.language as CallLanguage,
     caregiverName: hh?.caregiverName,
   });
 
-  const lang = patient.language as Language;
+  const lang = patient.language as CallLanguage;
   const [medlist, menu, thanks, noinput] = await Promise.all([
-    ensureAudio(scripts.greetingMedlist, lang, patient.voiceGender),
-    ensureAudio(scripts.menu, lang, patient.voiceGender),
-    ensureAudio(scripts.thanks, lang, patient.voiceGender),
-    ensureAudio(scripts.goodbyeNoinput, lang, patient.voiceGender),
+    ensureAudioOrFallback(scripts.greetingMedlist, lang, patient.voiceGender, "medlist"),
+    ensureAudioOrFallback(scripts.menu, lang, patient.voiceGender, "menu"),
+    ensureAudioOrFallback(scripts.thanks, lang, patient.voiceGender, "thanks"),
+    ensureAudioOrFallback(scripts.goodbyeNoinput, lang, patient.voiceGender, "noinput"),
   ]);
   const audioSet: AudioSet = {
-    medlist: `${medlist.hash}.mp3`,
-    menu: `${menu.hash}.mp3`,
-    thanks: `${thanks.hash}.mp3`,
-    noinput: `${noinput.hash}.mp3`,
+    language: lang,
+    medlist,
+    menu,
+    thanks,
+    noinput,
+    fallback: {
+      medlist: scripts.greetingMedlist,
+      menu: scripts.menu,
+      thanks: scripts.thanks,
+      noinput: scripts.goodbyeNoinput,
+    },
   };
 
-  const events = await prisma.doseEvent.findMany({ where: { id: { in: doseEventIds } } });
-  const attempt = Math.min(...events.map((e) => e.attempts)) + 1;
+  // Twilio <Say> has no locale for every language we support in the browser.
+  // For those languages a real phone call is safe only when every clip was
+  // generated successfully; never substitute another spoken language for a
+  // medicine instruction. The simulator remains available through device TTS.
+  if (
+    mode === "twilio" &&
+    !twilioVoiceLocale(lang) &&
+    [audioSet.medlist, audioSet.menu, audioSet.thanks, audioSet.noinput].some((clip) => !clip)
+  ) {
+    throw new AppError(
+      "TTS_UNAVAILABLE",
+      "This reminder language needs generated call audio before a phone reminder can be placed. Try again after voice audio is available.",
+    );
+  }
 
-  const call = await prisma.reminderCall.create({
-    data: {
-      patientId: patient.id,
-      scheduledAtUtc,
-      doseEventIdsJson: JSON.stringify(doseEventIds),
-      attempt,
-      mode,
-      audioFile: JSON.stringify(audioSet),
-    },
-  });
+  // Claim the entire pending group atomically before creating a call. This
+  // protects against a manual demo trigger racing the worker (or a double tap
+  // in the UI) and is the only point at which scheduled -> calling may occur.
+  const call = await prisma.$transaction(async (tx) => {
+    const current = await tx.doseEvent.findMany({
+      where: { id: { in: pendingDoseEventIds }, patientId: patient.id, status: "scheduled" },
+      select: { id: true, attempts: true },
+    });
+    if (current.length !== pendingDoseEventIds.length) {
+      throw new AppError("CONFLICT", "This reminder is already being handled.");
+    }
 
-  await prisma.doseEvent.updateMany({
-    where: { id: { in: doseEventIds } },
-    data: { status: "calling", nextAttemptAtUtc: null },
+    const attempt = Math.min(...current.map((event) => event.attempts)) + 1;
+    await tx.doseEvent.updateMany({
+      where: { id: { in: pendingDoseEventIds }, status: "scheduled" },
+      data: { status: "calling", nextAttemptAtUtc: null },
+    });
+    return tx.reminderCall.create({
+      data: {
+        patientId: patient.id,
+        scheduledAtUtc,
+        doseEventIdsJson: JSON.stringify(pendingDoseEventIds),
+        attempt,
+        mode,
+        audioFile: JSON.stringify(audioSet),
+      },
+    });
   });
 
   let placed = mode === "simulated";
@@ -83,11 +154,11 @@ export async function placeGroupReminder(opts: {
       const sid = await placeCall(patient.phoneE164, call.id);
       await prisma.reminderCall.update({ where: { id: call.id }, data: { twilioCallSid: sid } });
       placed = true;
-      logger.info({ callId: call.id, attempt }, "reminder call placed");
+      logger.info({ callId: call.id, attempt: call.attempt }, "reminder call placed");
     } catch (err) {
       // Revert: try again next tick.
       await prisma.doseEvent.updateMany({
-        where: { id: { in: doseEventIds } },
+        where: { id: { in: pendingDoseEventIds }, status: "calling" },
         data: { status: "scheduled", nextAttemptAtUtc: nextAttempt() },
       });
       await prisma.reminderCall.update({ where: { id: call.id }, data: { outcome: "failed" } });
@@ -95,7 +166,7 @@ export async function placeGroupReminder(opts: {
     }
   }
 
-  const url = (f: string) => `/api/audio/${f}`;
+  const url = (f: string | null) => (f ? `/api/audio/${f}` : null);
   return {
     reminderCallId: call.id,
     audioSet,
@@ -110,7 +181,50 @@ export async function placeGroupReminder(opts: {
 }
 
 export function getAudioSet(call: ReminderCall): AudioSet {
-  return JSON.parse(call.audioFile) as AudioSet;
+  const genericFallback: AudioFallbacks = {
+    medlist:
+      "Hello, this is DawaiSaathi with your medicine reminder. Please follow the instructions your doctor or pharmacist gave you.",
+    menu: "After taking your medicines, press 1. To hear this again, press 2.",
+    thanks: "Your dose is recorded. Confirm any medicine changes with your doctor or pharmacist. Goodbye.",
+    noinput:
+      "Please follow the instructions your doctor or pharmacist gave you. We will call again shortly. Goodbye.",
+  };
+  try {
+    const stored = JSON.parse(call.audioFile) as Partial<AudioSet>;
+    return {
+      language: isCallLanguage(stored.language) ? stored.language : "en",
+      medlist: typeof stored.medlist === "string" ? stored.medlist : null,
+      menu: typeof stored.menu === "string" ? stored.menu : null,
+      thanks: typeof stored.thanks === "string" ? stored.thanks : null,
+      noinput: typeof stored.noinput === "string" ? stored.noinput : null,
+      fallback:
+        stored.fallback &&
+        typeof stored.fallback.medlist === "string" &&
+        typeof stored.fallback.menu === "string" &&
+        typeof stored.fallback.thanks === "string" &&
+        typeof stored.fallback.noinput === "string"
+          ? stored.fallback
+          : genericFallback,
+    };
+  } catch (err) {
+    logger.warn({ err, callId: call.id }, "invalid reminder audio metadata — using voice fallback");
+    return { language: "en", medlist: null, menu: null, thanks: null, noinput: null, fallback: genericFallback };
+  }
+}
+
+async function ensureAudioOrFallback(
+  text: string,
+  language: CallLanguage,
+  voiceGender: string,
+  clip: keyof AudioFallbacks,
+): Promise<string | null> {
+  try {
+    const audio = await ensureAudio(text, language, voiceGender);
+    return `${audio.hash}.mp3`;
+  } catch (err) {
+    logger.warn({ err, clip, language }, "TTS unavailable — using voice fallback");
+    return null;
+  }
 }
 
 export type GatherAction = "confirmed" | "repeat" | "noinput";
@@ -123,32 +237,57 @@ export async function handleGatherResult(
   callId: string,
   digits: string,
 ): Promise<{ action: GatherAction; call: ReminderCall } | null> {
-  const call = await prisma.reminderCall.findUnique({ where: { id: callId } });
-  if (!call) return null;
-  const doseEventIds = parseStringArray(call.doseEventIdsJson);
+  return prisma.$transaction(async (tx) => {
+    const call = await tx.reminderCall.findUnique({ where: { id: callId } });
+    if (!call) return null;
 
-  if (digits === "1") {
-    const via = call.mode === "simulated" ? "simulated" : "ivr_dtmf";
-    await prisma.doseEvent.updateMany({
-      where: { id: { in: doseEventIds } },
-      data: { status: "confirmed", confirmedVia: via, confirmedAtUtc: new Date() },
-    });
-    const updated = await prisma.reminderCall.update({
-      where: { id: callId },
-      data: { outcome: "confirmed", digitsPressed: "1" },
-    });
-    return { action: "confirmed", call: updated };
-  }
+    // Gather/status webhooks are delivered at least once. A duplicate keypress
+    // must report the settled result without mutating dose events again.
+    if (call.outcome === "confirmed") return { action: "confirmed" as const, call };
+    if (call.outcome) return { action: "noinput" as const, call };
 
-  if (digits === "2" && call.replayCount < 1) {
-    const updated = await prisma.reminderCall.update({
-      where: { id: callId },
-      data: { replayCount: { increment: 1 }, digitsPressed: "2" },
-    });
-    return { action: "repeat", call: updated };
-  }
+    const doseEventIds = parseStringArray(call.doseEventIdsJson);
+    if (digits === "1") {
+      const events = await tx.doseEvent.findMany({
+        where: { id: { in: doseEventIds } },
+        select: { id: true, status: true },
+      });
+      const eligible =
+        events.length === doseEventIds.length &&
+        events.every((event) => event.status === "calling" || event.status === "confirmed");
+      if (!eligible) return { action: "noinput" as const, call };
 
-  return { action: "noinput", call };
+      const claimed = await tx.reminderCall.updateMany({
+        where: { id: callId, outcome: null },
+        data: { outcome: "confirmed", digitsPressed: "1" },
+      });
+      if (claimed.count === 0) {
+        const settled = await tx.reminderCall.findUniqueOrThrow({ where: { id: callId } });
+        return { action: settled.outcome === "confirmed" ? "confirmed" as const : "noinput" as const, call: settled };
+      }
+
+      const via = call.mode === "simulated" ? "simulated" : "ivr_dtmf";
+      await tx.doseEvent.updateMany({
+        where: { id: { in: doseEventIds }, status: "calling" },
+        data: { status: "confirmed", confirmedVia: via, confirmedAtUtc: new Date() },
+      });
+      const updated = await tx.reminderCall.findUniqueOrThrow({ where: { id: callId } });
+      return { action: "confirmed" as const, call: updated };
+    }
+
+    if (digits === "2" && call.replayCount < 1) {
+      const claimed = await tx.reminderCall.updateMany({
+        where: { id: callId, outcome: null, replayCount: { lt: 1 } },
+        data: { replayCount: { increment: 1 }, digitsPressed: "2" },
+      });
+      if (claimed.count > 0) {
+        const updated = await tx.reminderCall.findUniqueOrThrow({ where: { id: callId } });
+        return { action: "repeat" as const, call: updated };
+      }
+    }
+
+    return { action: "noinput" as const, call };
+  });
 }
 
 const nextAttempt = () => new Date(Date.now() + config.retryDelayMinutes * 60 * 1000);
@@ -161,40 +300,52 @@ export async function finalizeUnconfirmed(
   callId: string,
   outcome: "no_input" | "not_answered" | "failed" = "no_input",
 ): Promise<void> {
-  const call = await prisma.reminderCall.findUnique({ where: { id: callId } });
-  if (!call || call.outcome === "confirmed") return;
+  await prisma.$transaction(async (tx) => {
+    const call = await tx.reminderCall.findUnique({ where: { id: callId } });
+    if (!call || call.outcome !== null) return;
 
-  await prisma.reminderCall.update({
-    where: { id: callId },
-    data: { outcome: call.outcome ?? outcome },
-  });
+    // Claim finalization before touching attempts. Status callbacks and the
+    // stuck-call sweep can race; only one may consume a retry.
+    const claimed = await tx.reminderCall.updateMany({
+      where: { id: callId, outcome: null },
+      data: { outcome },
+    });
+    if (claimed.count === 0) return;
 
-  const doseEventIds = parseStringArray(call.doseEventIdsJson);
-  const events = await prisma.doseEvent.findMany({ where: { id: { in: doseEventIds } } });
-  const missed: string[] = [];
+    const doseEventIds = parseStringArray(call.doseEventIdsJson);
+    const events = await tx.doseEvent.findMany({ where: { id: { in: doseEventIds } } });
+    const missed: string[] = [];
 
-  for (const ev of events) {
-    if (ev.status === "confirmed" || ev.status === "skipped") continue;
-    const attempts = ev.attempts + 1;
-    if (attempts < config.maxCallAttempts) {
-      await prisma.doseEvent.update({
-        where: { id: ev.id },
-        data: { status: "scheduled", attempts, nextAttemptAtUtc: nextAttempt() },
-      });
-    } else {
-      await prisma.doseEvent.update({
-        where: { id: ev.id },
-        data: { status: "missed", attempts, nextAttemptAtUtc: null },
-      });
-      missed.push(ev.id);
+    for (const event of events) {
+      if (event.status !== "calling") continue;
+      const attempts = event.attempts + 1;
+      if (attempts < config.maxCallAttempts) {
+        await tx.doseEvent.update({
+          where: { id: event.id },
+          data: { status: "scheduled", attempts, nextAttemptAtUtc: nextAttempt() },
+        });
+      } else {
+        await tx.doseEvent.update({
+          where: { id: event.id },
+          data: { status: "missed", attempts, nextAttemptAtUtc: null },
+        });
+        missed.push(event.id);
+      }
     }
-  }
 
-  if (missed.length > 0) await createMissedAlert(call.patientId, call.scheduledAtUtc, missed);
+    if (missed.length > 0) {
+      await createMissedAlert(tx, call.patientId, call.scheduledAtUtc, missed);
+    }
+  });
 }
 
-async function createMissedAlert(patientId: string, scheduledAtUtc: Date, doseEventIds: string[]) {
-  const patient = await prisma.patient.findUnique({ where: { id: patientId } });
+async function createMissedAlert(
+  tx: Prisma.TransactionClient,
+  patientId: string,
+  scheduledAtUtc: Date,
+  doseEventIds: string[],
+) {
+  const patient = await tx.patient.findUnique({ where: { id: patientId } });
   if (!patient) return;
   const tz = patient.timezone || config.defaultTz;
   const time = utcToLocalTime(scheduledAtUtc, tz);
@@ -202,7 +353,7 @@ async function createMissedAlert(patientId: string, scheduledAtUtc: Date, doseEv
   const hiLbl = slotLabel(time, "hi");
   const n = config.maxCallAttempts;
 
-  await prisma.caregiverAlert.create({
+  await tx.caregiverAlert.create({
     data: {
       patientId,
       type: "missed_dose",
@@ -217,7 +368,7 @@ async function createMissedAlert(patientId: string, scheduledAtUtc: Date, doseEv
 export async function sweepStuckCalls(): Promise<void> {
   const cutoff = new Date(Date.now() - 5 * 60 * 1000);
   const stuck = await prisma.reminderCall.findMany({
-    where: { mode: "twilio", outcome: null, updatedAt: { lt: cutoff } },
+    where: { outcome: null, updatedAt: { lt: cutoff } },
   });
   for (const call of stuck) {
     logger.warn({ callId: call.id }, "sweeping stuck call");

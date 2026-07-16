@@ -1,4 +1,3 @@
-import sharp from "sharp";
 import { callLLM } from "@/lib/openai";
 import {
   EXTRACTION_SYSTEM,
@@ -7,17 +6,31 @@ import {
   type ExtractionResult,
 } from "@/lib/prompts";
 import { logger } from "@/lib/logger";
+import { AppError } from "@/lib/errors";
 
 export type RawMed = ExtractionResult["medications"][number];
 
-/** Resize to <=1600px long edge, jpeg q80, and return a base64 data URL (Arch §8.6). */
-export async function resizeToDataUrl(buffer: Buffer): Promise<string> {
-  const out = await sharp(buffer)
-    .rotate() // honor EXIF orientation
-    .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
-    .jpeg({ quality: 80 })
-    .toBuffer();
-  return `data:image/jpeg;base64,${out.toString("base64")}`;
+/**
+ * Workers cannot safely ship native image libraries. Upload validation keeps
+ * vision inputs small enough to send directly as standard web image data URLs.
+ */
+export async function resizeToDataUrl(buffer: Uint8Array, mimeType = "image/jpeg"): Promise<string> {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+    throw new AppError(
+      "VALIDATION",
+      "Please choose a JPEG, PNG, or WebP photo. On iPhone, use Share → Save to Files as JPEG if your photo is HEIC.",
+    );
+  }
+  return `data:${mimeType};base64,${bytesToBase64(buffer)}`;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let start = 0; start < bytes.length; start += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(start, start + chunkSize));
+  }
+  return btoa(binary);
 }
 
 /** Extract medicines from one photo. */
@@ -37,6 +50,7 @@ export async function extractPhoto(dataUrl: string): Promise<ExtractionResult> {
 /** Run extraction across photos in parallel, isolating per-photo failures (Data-Flow §2). */
 export async function extractPhotos(
   dataUrls: string[],
+  photoNumbers: number[] = dataUrls.map((_, index) => index + 1),
 ): Promise<{ medications: RawMed[]; imageIssues: string[] }> {
   const results = await Promise.allSettled(dataUrls.map((u) => extractPhoto(u)));
   const medications: RawMed[] = [];
@@ -50,7 +64,7 @@ export async function extractPhotos(
       imageIssues.push(...r.value.imageIssues);
     } else {
       logger.warn({ photo: i, err: r.reason }, "photo extraction failed");
-      imageIssues.push(`photo ${i + 1} could not be processed`);
+      imageIssues.push(`photo ${photoNumbers[i] ?? i + 1} could not be processed`);
     }
   });
 
@@ -65,15 +79,47 @@ export async function extractPhotos(
   return { medications: mergeMedications(medications), imageIssues };
 }
 
-const primaryStrength = (m: RawMed): string =>
-  m.composition[0]?.strengthValue != null ? String(m.composition[0].strengthValue) : "";
+/**
+ * Keep each salt bound to its own strength. A key based only on the first
+ * ingredient can incorrectly merge two combination medicines such as
+ * 500 mg + 5 mg and 500 mg + 10 mg.
+ */
+const compositionSignature = (m: RawMed): string =>
+  m.composition
+    .map((component) => {
+      const salt = component.saltNameAsPrinted.trim().toLowerCase().replace(/\s+/g, " ");
+      const strength =
+        component.strengthValue == null
+          ? ""
+          : `${component.strengthValue}${component.strengthUnit ?? ""}`.toLowerCase();
+      return `${salt}:${strength}`;
+    })
+    .sort()
+    .join("+");
 
-const salts = (m: RawMed): string =>
-  m.composition.map((c) => c.saltNameAsPrinted.trim().toLowerCase()).sort().join("+");
-
-function mergeKey(m: RawMed): string {
+const brandKey = (m: RawMed) => {
   const brand = m.brandName?.trim().toLowerCase();
-  return brand ? `${brand}|${primaryStrength(m)}` : `salts:${salts(m)}|${primaryStrength(m)}`;
+  return brand ? `${brand}|${compositionSignature(m)}` : null;
+};
+
+const compositionKey = (m: RawMed) =>
+  m.composition.length > 0 ? compositionSignature(m) : null;
+
+/**
+ * A front/back pair often has complementary information: the front may have a
+ * brand but no composition, while the back has composition but no brand. Use
+ * the brand key when both brands are visible, otherwise safely bridge through
+ * the composition+unit-strength key. This preserves distinct branded strips
+ * when both brands are readable.
+ */
+function representsSameMedicine(a: RawMed, b: RawMed): boolean {
+  const aBrand = brandKey(a);
+  const bBrand = brandKey(b);
+  if (aBrand && bBrand) return aBrand === bBrand;
+
+  const aComposition = compositionKey(a);
+  const bComposition = compositionKey(b);
+  return !!aComposition && aComposition === bComposition;
 }
 
 /** Merge two records for the same physical medicine, keeping higher-confidence values (Arch §8.2.1). */
@@ -93,9 +139,11 @@ function mergeTwo(a: RawMed, b: RawMed): RawMed {
   return {
     brandName: pick("brandName", a.brandName, b.brandName) as string | null,
     composition:
-      (a.fieldConfidence.composition ?? 0) >= (b.fieldConfidence.composition ?? 0)
-        ? a.composition
-        : b.composition,
+      (b.fieldConfidence.composition ?? 0) > (a.fieldConfidence.composition ?? 0) ||
+      ((b.fieldConfidence.composition ?? 0) === (a.fieldConfidence.composition ?? 0) &&
+        b.composition.length > a.composition.length)
+        ? b.composition
+        : a.composition,
     form: a.form !== "other" ? a.form : b.form,
     packSize: (a.packSize ?? b.packSize) as number | null,
     mrpInr: pick("mrpInr", a.mrpInr, b.mrpInr) as number | null,
@@ -114,11 +162,11 @@ function mergeTwo(a: RawMed, b: RawMed): RawMed {
 
 /** Dedupe/merge medicines across all photos (Arch §8.2.1). */
 export function mergeMedications(meds: RawMed[]): RawMed[] {
-  const byKey = new Map<string, RawMed>();
+  const merged: RawMed[] = [];
   for (const m of meds) {
-    const key = mergeKey(m);
-    const existing = byKey.get(key);
-    byKey.set(key, existing ? mergeTwo(existing, m) : m);
+    const existingIndex = merged.findIndex((existing) => representsSameMedicine(existing, m));
+    if (existingIndex === -1) merged.push(m);
+    else merged[existingIndex] = mergeTwo(merged[existingIndex], m);
   }
-  return Array.from(byKey.values());
+  return merged;
 }

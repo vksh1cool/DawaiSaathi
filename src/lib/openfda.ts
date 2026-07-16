@@ -12,13 +12,16 @@ const EXCERPT_MAX = 6000;
 export type LabelExcerpt = { salt: string; excerpt: string; found: boolean };
 
 // Injectable low-level fetch (tests override).
-type Fetcher = (url: string) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
-let fetchImpl: Fetcher = (url) => fetch(url);
+type Fetcher = (
+  url: string,
+  init?: RequestInit,
+) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
+let fetchImpl: Fetcher = (url, init) => fetch(url, init);
 export function _setOpenFdaFetch(f: Fetcher) {
   fetchImpl = f;
 }
 export function _resetOpenFdaFetch() {
-  fetchImpl = (url) => fetch(url);
+  fetchImpl = (url, init) => fetch(url, init);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -43,7 +46,16 @@ function buildExcerpt(doc: LabelDoc): string {
 async function queryLabel(field: "generic_name" | "substance_name", name: string): Promise<LabelDoc | null> {
   const key = config.openfdaApiKey ? `&api_key=${config.openfdaApiKey}` : "";
   const url = `${BASE}?search=openfda.${field}:%22${encodeURIComponent(name)}%22&limit=2${key}`;
-  const res = await fetchImpl(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  let res: Awaited<ReturnType<Fetcher>>;
+  try {
+    res = await fetchImpl(url, { signal: controller.signal });
+  } catch (err) {
+    throw new AppError("UPSTREAM_OPENFDA", "openFDA is temporarily unavailable.", err);
+  } finally {
+    clearTimeout(timeout);
+  }
   if (res.status === 404) return null;
   if (!res.ok) throw new AppError("UPSTREAM_OPENFDA", `openFDA returned ${res.status}`);
   const body = (await res.json()) as { results?: LabelDoc[] };
@@ -55,7 +67,12 @@ export async function fetchLabelExcerpt(fdaSearchName: string): Promise<LabelExc
   const cacheKey = `openfda:label:${fdaSearchName.toLowerCase()}`;
   const cached = await prisma.apiCache.findUnique({ where: { key: cacheKey } });
   if (cached && Date.now() - cached.fetchedAt.getTime() < CACHE_TTL_MS) {
-    return JSON.parse(cached.payload) as LabelExcerpt;
+    try {
+      return JSON.parse(cached.payload) as LabelExcerpt;
+    } catch {
+      // A corrupt local cache must not prevent a fresh evidence lookup.
+      await prisma.apiCache.delete({ where: { key: cacheKey } }).catch(() => undefined);
+    }
   }
 
   let doc = await queryLabel("generic_name", fdaSearchName);

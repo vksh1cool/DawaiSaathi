@@ -1,5 +1,7 @@
 /** Shared domain types (Arch §5). */
 
+import type { AppLanguage, CallLanguage } from "@/lib/languages";
+
 export type StrengthUnit =
   | "mg"
   | "mcg"
@@ -110,8 +112,17 @@ export type TodayGroup = {
   scheduledAtUtc: string;
   status: "upcoming" | "confirmed" | "missed" | "mixed";
   foodRelation: FoodRelation;
-  meds: { medicationId: string; brandName: string; count: number; form: MedForm }[];
+  meds: {
+    medicationId: string;
+    brandName: string;
+    count: number;
+    form: MedForm;
+    highRisk: boolean;
+    expiryStatus: "expired" | "expiring" | "ok" | "unknown";
+  }[];
   doseEventIds: string[];
 };
 
-export type Language = "en" | "hi";
+/** @deprecated Prefer the explicit AppLanguage or CallLanguage type. */
+export type Language = CallLanguage;
+export type { AppLanguage, CallLanguage };

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { Card, Spinner } from "@/components/ui";
+import { Card, PrimaryButton, Spinner } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/provider";
 import { apiGet } from "@/lib/api-client";
 import { formatInr } from "@/lib/util/money";
@@ -14,41 +14,69 @@ type GenericsResponse = { matches: GenericMatchResult[]; totalMonthlySavingsInr:
 export default function SavingsPage() {
   const { t } = useI18n();
   const [data, setData] = useState<GenericsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setData(await apiGet<GenericsResponse>("/api/generics"));
+    } catch {
+      setError(t("savings.loadError"));
+    }
+  }, [t]);
 
   useEffect(() => {
-    apiGet<GenericsResponse>("/api/generics")
-      .then(setData)
-      .catch(() => setData({ matches: [], totalMonthlySavingsInr: 0 }));
-  }, []);
+    void load();
+  }, [load]);
 
   if (!data) {
     return (
       <AppShell>
-        <Spinner label={t("common.loading")} />
+        {error ? (
+          <Card tone="warn">
+            <p className="text-sm">{error}</p>
+            <PrimaryButton className="mt-3" onClick={() => void load()}>
+              {t("common.tryAgain")}
+            </PrimaryButton>
+          </Card>
+        ) : (
+          <Spinner label={t("common.loading")} />
+        )}
       </AppShell>
     );
   }
 
   const yearly = data.totalMonthlySavingsInr * 12;
+  const hasSavings = data.totalMonthlySavingsInr > 0;
 
   return (
     <AppShell>
       <h1 className="mb-3 text-2xl font-bold">{t("savings.title")}</h1>
 
-      <Card tone="success" className="mb-4 text-center">
-        <p className="text-[34px] font-bold leading-tight text-[var(--color-success)]">
-          {formatInr(data.totalMonthlySavingsInr)}
-          <span className="text-lg font-semibold"> {t("savings.heroPer")}</span>
-        </p>
-        <p className="text-sm text-[var(--color-text-muted)]">
-          {t("savings.heroYear", { amount: formatInr(yearly) })}
-        </p>
+      <Card tone={hasSavings ? "success" : "info"} className="mb-4 text-center">
+        {hasSavings ? (
+          <>
+            <p className="text-[34px] font-bold leading-tight text-[var(--color-success)]">
+              {formatInr(data.totalMonthlySavingsInr)}
+              <span className="text-lg font-semibold"> {t("savings.heroPer")}</span>
+            </p>
+            <p className="text-sm text-[var(--color-text-muted)]">
+              {t("savings.heroYear", { amount: formatInr(yearly) })}
+            </p>
+          </>
+        ) : (
+          <p className="text-sm font-medium text-[var(--color-text)]">{t("savings.noSavingsSummary")}</p>
+        )}
       </Card>
 
       <div className="flex flex-col gap-3">
-        {data.matches.map((m) => (
-          <SavingsRow key={m.id} match={m} />
-        ))}
+        {data.matches.length > 0 ? (
+          data.matches.map((m) => <SavingsRow key={m.id} match={m} />)
+        ) : (
+          <Card>
+            <p className="text-sm text-[var(--color-text-muted)]">{t("savings.empty")}</p>
+          </Card>
+        )}
       </div>
 
       <p className="mt-5 text-sm font-medium text-[var(--color-text-muted)]">{t("savings.caption")}</p>
@@ -57,7 +85,7 @@ export default function SavingsPage() {
         href="https://janaushadhi.gov.in/KendraDetails.aspx"
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-3 flex min-h-[52px] items-center justify-center gap-2 rounded-[12px] border border-[var(--color-primary)] px-4 font-semibold text-[var(--color-primary)]"
+        className="pressable mt-3 flex min-h-[52px] items-center justify-center gap-2 rounded-[12px] border border-[var(--color-primary)] px-4 font-semibold text-[var(--color-primary)] transition-[transform,background-color] duration-150 ease-[var(--ease-out)]"
       >
         {t("savings.findKendra")} <ExternalLink size={16} />
       </a>

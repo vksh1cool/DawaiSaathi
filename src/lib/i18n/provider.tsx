@@ -1,12 +1,12 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import type { Language } from "@/types/domain";
+import { isAppLanguage, type AppLanguage } from "@/lib/languages";
 import { translate, type TFunction } from "./index";
 
 type I18nContextValue = {
-  lang: Language;
-  setLang: (lang: Language) => void;
+  lang: AppLanguage;
+  setLang: (lang: AppLanguage) => void;
   t: TFunction;
 };
 
@@ -15,13 +15,13 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 const STORAGE_KEY = "dawaisaathi.lang";
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Language>("en");
+  const [lang, setLangState] = useState<AppLanguage>("en");
 
   // Hydrate saved preference on mount.
   useEffect(() => {
     const saved = (typeof window !== "undefined" &&
-      window.localStorage.getItem(STORAGE_KEY)) as Language | null;
-    if (saved === "en" || saved === "hi") setLangState(saved);
+      window.localStorage.getItem(STORAGE_KEY)) as string | null;
+    if (isAppLanguage(saved)) setLangState(saved);
   }, []);
 
   // Keep <html lang> in sync (drives Devanagari font sizing in globals.css).
@@ -29,7 +29,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     if (typeof document !== "undefined") document.documentElement.lang = lang;
   }, [lang]);
 
-  const setLang = useCallback((next: Language) => {
+  const setLang = useCallback((next: AppLanguage) => {
     setLangState(next);
     if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, next);
   }, []);

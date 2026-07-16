@@ -1,11 +1,11 @@
 import en from "./en.json";
 import hi from "./hi.json";
-import type { Language } from "@/types/domain";
+import { APP_LANGUAGE_CODES, type AppLanguage } from "@/lib/languages";
 
 export const dictionaries = { en, hi } as const;
 export type Dictionary = typeof en;
 
-export const LANGUAGES: { code: Language; label: string }[] = [
+export const LANGUAGES: { code: AppLanguage; label: string }[] = [
   { code: "en", label: "English" },
   { code: "hi", label: "हिन्दी" },
 ];
@@ -34,7 +34,7 @@ function interpolate(str: string, vars?: Record<string, string | number>): strin
 
 /** Translate a key. Falls back to English, then to the raw key. */
 export function translate(
-  lang: Language,
+  lang: AppLanguage,
   key: string,
   vars?: Record<string, string | number>,
 ): string {
@@ -43,3 +43,5 @@ export function translate(
 }
 
 export type TFunction = (key: string, vars?: Record<string, string | number>) => string;
+
+export { APP_LANGUAGE_CODES };

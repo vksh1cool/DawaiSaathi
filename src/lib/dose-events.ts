@@ -1,6 +1,7 @@
-import { prisma } from "@/lib/db";
+import { prisma, parseStringArray } from "@/lib/db";
 import { config } from "@/lib/config";
-import { utcToLocalTime, localDayBoundsUtc, utcToLocalDate } from "@/lib/util/dates";
+import { AppError } from "@/lib/errors";
+import { utcToLocalTime, localDayBoundsUtc, utcToLocalDate, expiryStatus } from "@/lib/util/dates";
 import type { TodayGroup, MedForm, FoodRelation, DoseStatus } from "@/types/domain";
 import type { Patient } from "@prisma/client";
 import { DateTime } from "luxon";
@@ -25,6 +26,17 @@ function groupStatus(events: EventWithMed[]): TodayGroup["status"] {
   return "mixed";
 }
 
+/** A mixed dose slot has no single safe food instruction. */
+export function resolveGroupFoodRelation(
+  relations: Array<FoodRelation | null | undefined>,
+): FoodRelation {
+  const distinct = new Set<FoodRelation>();
+  for (const relation of relations) {
+    if (relation) distinct.add(relation);
+  }
+  return distinct.size === 1 ? [...distinct][0]! : "any";
+}
+
 export async function getToday(patient: Patient): Promise<{ groups: TodayGroup[] }> {
   const tz = patient.timezone || config.defaultTz;
   const { startUtc, endUtc } = localDayBoundsUtc(tz, 0);
@@ -43,17 +55,36 @@ export async function getToday(patient: Patient): Promise<{ groups: TodayGroup[]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([time, evs]) => {
       // Distinct meds in this slot.
-      const medMap = new Map<string, { brandName: string; count: number; form: MedForm }>();
+      const medMap = new Map<
+        string,
+        {
+          brandName: string;
+          count: number;
+          form: MedForm;
+          highRisk: boolean;
+          expiryStatus: "expired" | "expiring" | "ok" | "unknown";
+        }
+      >();
       for (const e of evs) {
         const existing = medMap.get(e.medicationId);
         if (existing) existing.count += 1;
-        else medMap.set(e.medicationId, { brandName: e.medication.brandName, count: 1, form: e.medication.form as MedForm });
+        else {
+          medMap.set(e.medicationId, {
+            brandName: e.medication.brandName,
+            count: 1,
+            form: e.medication.form as MedForm,
+            highRisk: e.medication.highRisk,
+            expiryStatus: expiryStatus(e.medication.expiryDate),
+          });
+        }
       }
       return {
         time,
         scheduledAtUtc: evs[0].scheduledAtUtc.toISOString(),
         status: groupStatus(evs),
-        foodRelation: (evs[0].schedule?.foodRelation ?? "any") as FoodRelation,
+        foodRelation: resolveGroupFoodRelation(
+          evs.map((event) => event.schedule?.foodRelation as FoodRelation | null | undefined),
+        ),
         meds: Array.from(medMap.entries()).map(([medicationId, v]) => ({ medicationId, ...v })),
         doseEventIds: evs.map((e) => e.id),
       };
@@ -63,16 +94,103 @@ export async function getToday(patient: Patient): Promise<{ groups: TodayGroup[]
 }
 
 export async function markDose(patientId: string, doseEventId: string, status: "confirmed" | "skipped") {
-  const ev = await prisma.doseEvent.findFirst({ where: { id: doseEventId, patientId } });
-  if (!ev) return null;
-  return prisma.doseEvent.update({
-    where: { id: doseEventId },
-    data: {
-      status,
-      confirmedAtUtc: status === "confirmed" ? new Date() : null,
-      confirmedVia: status === "confirmed" ? "caregiver_manual" : null,
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    const ev = await tx.doseEvent.findFirst({ where: { id: doseEventId, patientId } });
+    if (!ev) return null;
+
+    if (status === "confirmed" && ev.status === "skipped") {
+      throw new AppError("CONFLICT", "A skipped dose cannot be marked as taken.");
+    }
+    // A skip is only a cancellation before a call starts. Allowing
+    // calling → skipped leaves a live ReminderCall with an ambiguous outcome.
+    if (status === "skipped" && ev.status !== "scheduled") {
+      throw new AppError("CONFLICT", "Only a pending dose can be skipped.");
+    }
+
+    // Repeating the same caregiver action is safe and should not alter the
+    // original confirmation timestamp.
+    if (ev.status === status) return ev;
+
+    return tx.doseEvent.update({
+      where: { id: doseEventId },
+      data: {
+        status,
+        confirmedAtUtc: status === "confirmed" ? new Date() : null,
+        confirmedVia: status === "confirmed" ? "caregiver_manual" : null,
+        nextAttemptAtUtc: null,
+      },
+    });
   });
+
+  if (updated?.status === "confirmed") {
+    await settleCallsConfirmedByCaregiver(patientId, [doseEventId]);
+  }
+  return updated;
+}
+
+/**
+ * Mark a whole time slot as taken in one transaction. A slot is the unit a
+ * caregiver sees and hears on the reminder call, so partial client-side
+ * updates would make both its status and any live call ambiguous.
+ */
+export async function markDoseGroupConfirmed(patientId: string, doseEventIds: string[]) {
+  const ids = [...new Set(doseEventIds)];
+  const updated = await prisma.$transaction(async (tx) => {
+    const events = await tx.doseEvent.findMany({
+      where: { id: { in: ids }, patientId },
+      select: { id: true, status: true },
+    });
+    if (events.length !== ids.length) return null;
+    if (events.some((event) => event.status === "skipped")) {
+      throw new AppError("CONFLICT", "A skipped dose cannot be marked as taken.");
+    }
+
+    const pending = events.filter((event) => event.status !== "confirmed");
+    const claimed = await tx.doseEvent.updateMany({
+      where: { id: { in: ids }, patientId, status: { in: ["scheduled", "calling", "missed"] } },
+      data: {
+        status: "confirmed",
+        confirmedAtUtc: new Date(),
+        confirmedVia: "caregiver_manual",
+        nextAttemptAtUtc: null,
+      },
+    });
+    if (claimed.count !== pending.length) {
+      throw new AppError("CONFLICT", "This dose group changed. Please refresh and try again.");
+    }
+    return events;
+  });
+
+  if (updated) await settleCallsConfirmedByCaregiver(patientId, ids);
+  return updated;
+}
+
+/**
+ * A caregiver may mark a dose taken while its IVR call is still ringing.
+ * Once every event in that call is confirmed, settle the call as confirmed
+ * too, so its later status webhook cannot turn an already-taken group into a
+ * misleading "no input" call-log entry.
+ */
+async function settleCallsConfirmedByCaregiver(patientId: string, doseEventIds: string[]) {
+  const openCalls = await prisma.reminderCall.findMany({
+    where: { patientId, outcome: null },
+    select: { id: true, doseEventIdsJson: true },
+  });
+
+  for (const call of openCalls) {
+    const ids = parseStringArray(call.doseEventIdsJson);
+    if (ids.length === 0 || !ids.some((id) => doseEventIds.includes(id))) continue;
+
+    const confirmed = await prisma.doseEvent.count({
+      where: { id: { in: ids }, patientId, status: "confirmed" },
+    });
+    if (confirmed === ids.length) {
+      await prisma.reminderCall.updateMany({
+        where: { id: call.id, outcome: null },
+        data: { outcome: "confirmed" },
+      });
+    }
+  }
 }
 
 export async function getAdherence(patient: Patient, days: number) {

@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { AppError, withErrorBoundary } from "@/lib/errors";
 import { getPatientOrThrow } from "@/lib/household";
-import { serializeMedication } from "@/lib/medications";
+import {
+  canonicalizeSalts,
+  displayGenericForSalts,
+  medicationSafety,
+  serializeMedication,
+} from "@/lib/medications";
 import { patchMedicationSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
@@ -18,12 +23,15 @@ export const PATCH = withErrorBoundary(async (req: Request, ctx: Ctx) => {
   const existing = await prisma.medication.findFirst({ where: { id, patientId: patient.id } });
   if (!existing) throw new AppError("NOT_FOUND", "Medicine not found.");
 
+  const salts = body.salts ? canonicalizeSalts(body.salts) : undefined;
+  const safety = salts ? medicationSafety(salts) : undefined;
+
   const updated = await prisma.medication.update({
     where: { id },
     data: {
       brandName: body.brandName,
-      displayGeneric: body.displayGeneric,
-      saltsJson: body.salts ? JSON.stringify(body.salts) : undefined,
+      displayGeneric: salts ? displayGenericForSalts(salts) : body.displayGeneric,
+      saltsJson: salts ? JSON.stringify(salts) : undefined,
       form: body.form,
       packSize: body.packSize,
       mrpInr: body.mrpInr,
@@ -31,6 +39,8 @@ export const PATCH = withErrorBoundary(async (req: Request, ctx: Ctx) => {
       batchNumber: body.batchNumber,
       manufacturer: body.manufacturer,
       notes: body.notes,
+      highRisk: safety?.highRisk,
+      highRiskReason: safety?.highRiskReason,
     },
   });
   return NextResponse.json({ medication: serializeMedication(updated) });
@@ -46,6 +56,12 @@ export const DELETE = withErrorBoundary(async (_req: Request, ctx: Ctx) => {
   await prisma.$transaction([
     prisma.medication.update({ where: { id }, data: { status: "archived" } }),
     prisma.schedule.updateMany({ where: { medicationId: id }, data: { active: false } }),
+    // Keep history intact but prevent a removed medicine from being called in
+    // the future. `skipped` is excluded from adherence by design.
+    prisma.doseEvent.updateMany({
+      where: { medicationId: id, status: "scheduled", scheduledAtUtc: { gte: new Date() } },
+      data: { status: "skipped", nextAttemptAtUtc: null },
+    }),
   ]);
   return NextResponse.json({ ok: true });
 });

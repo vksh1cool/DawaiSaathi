@@ -14,6 +14,8 @@ export function ConfidenceField({
   type = "text",
   inputMode,
   placeholder,
+  min,
+  step,
 }: {
   label: string;
   value: string;
@@ -22,6 +24,8 @@ export function ConfidenceField({
   type?: string;
   inputMode?: "text" | "numeric" | "decimal";
   placeholder?: string;
+  min?: number;
+  step?: number | string;
 }) {
   const { t } = useI18n();
   const unclear = confidence !== undefined && confidence < THRESHOLD;
@@ -31,6 +35,8 @@ export function ConfidenceField({
       <input
         type={type}
         inputMode={inputMode}
+        min={min}
+        step={step}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}

@@ -13,13 +13,13 @@ import { fetchLabelExcerpts } from "@/lib/openfda";
 import type { Finding, Severity, FindingSource, EvidenceQuote } from "@/types/domain";
 import { cuid } from "@/lib/util/id";
 
-type MedSalt = { medId: string; brand: string; inn: string; fdaSearchName: string };
+export type MedSalt = { medId: string; brand: string; inn: string; fdaSearchName: string };
 
 const consultEn = "Discuss with your doctor or pharmacist before the next dose.";
 const consultHi = "अगली खुराक से पहले डॉक्टर या फार्मासिस्ट से बात करें।";
 
 /** Ensure the action line always ends with a consult instruction (PRD §9.3). */
-function ensureConsult(action: string, lang: "en" | "hi"): string {
+export function ensureConsult(action: string, lang: "en" | "hi"): string {
   const needle = lang === "en" ? "pharmacist" : "फार्मासिस्ट";
   const doctor = lang === "en" ? "doctor" : "डॉक्टर";
   if (action.toLowerCase().includes(needle) || action.includes(doctor)) return action;
@@ -110,14 +110,13 @@ export async function runInteractions(patientId: string): Promise<InteractionRun
 
   // ── Layers 2+3: openFDA-grounded + LLM suspicion ──────────────────
   let degraded: "openfda_unavailable" | undefined;
-  let excerptsCombined = "";
   const excerptBySalt = new Map<string, string>();
 
   if (medSalts.length >= 2) {
     try {
       const excerpts = await fetchLabelExcerpts(medSalts.map((m) => m.fdaSearchName));
       for (const e of excerpts) excerptBySalt.set(e.salt.toLowerCase(), e.excerpt);
-      excerptsCombined = norm(excerpts.map((e) => e.excerpt).join("\n"));
+      if (excerpts.some((excerpt) => !excerpt.found)) degraded = "openfda_unavailable";
     } catch (err) {
       logger.warn({ err }, "openFDA layer skipped — degraded");
       degraded = "openfda_unavailable";
@@ -130,21 +129,26 @@ export async function runInteractions(patientId: string): Promise<InteractionRun
         if (curatedPairKeys.has(pk)) continue; // no duplicates of curated
         if (findings.some((x) => x.pairKey === pk)) continue;
 
-        // Locate the meds for these salts.
-        const a = medSalts.find((m) => m.inn === f.saltA);
-        const b = medSalts.find((m) => m.inn === f.saltB);
-        if (!a || !b || a.medId === b.medId) continue; // salts must be real + different meds
+        // Locate a pair on different medicines. A simple `.find()` can select
+        // two salts from the same combination medicine when the patient has a
+        // duplicate salt elsewhere, silently dropping a valid interaction.
+        const pair = findDistinctMedicationPair(medSalts, f.saltA, f.saltB);
+        if (!pair) continue;
+        const { a, b } = pair;
 
         // Evidence gating (AC-4.3).
         let source: FindingSource = f.source;
         let severity: Severity = f.severity;
         const evidence: EvidenceQuote[] = [];
-        const quoteOk =
-          f.evidenceQuote && excerptsCombined.includes(norm(f.evidenceQuote));
+        const evidenceSalt = resolveEvidenceSalt(f.evidenceLabelSalt, f.saltA, medSalts);
+        const labelExcerpt = evidenceSalt ? excerptBySalt.get(evidenceSalt) ?? "" : "";
+        // The quote must come from the exact label named by the model, not
+        // merely from another medication's combined excerpt.
+        const quoteOk = !!f.evidenceQuote && norm(labelExcerpt).includes(norm(f.evidenceQuote));
         if (f.source === "openfda") {
           if (quoteOk) {
             evidence.push({
-              source: `openfda:${f.evidenceLabelSalt ?? f.saltA}`,
+              source: `openfda:${evidenceSalt}`,
               quote: f.evidenceQuote!,
             });
           } else {
@@ -189,6 +193,33 @@ export async function runInteractions(patientId: string): Promise<InteractionRun
     ranAt: new Date().toISOString(),
     degraded,
   };
+}
+
+export function findDistinctMedicationPair(
+  medSalts: MedSalt[],
+  saltA: string,
+  saltB: string,
+): { a: MedSalt; b: MedSalt } | null {
+  for (const a of medSalts) {
+    if (a.inn !== saltA) continue;
+    for (const b of medSalts) {
+      if (b.inn === saltB && b.medId !== a.medId) return { a, b };
+    }
+  }
+  return null;
+}
+
+/** Map an INN or FDA search-name emitted by the model to a fetched label key. */
+function resolveEvidenceSalt(
+  requested: string | null,
+  fallbackInn: string,
+  medSalts: MedSalt[],
+): string | null {
+  const target = norm(requested || fallbackInn);
+  const match = medSalts.find(
+    (salt) => norm(salt.inn) === target || norm(salt.fdaSearchName) === target,
+  );
+  return match?.fdaSearchName.toLowerCase() ?? null;
 }
 
 async function runInteractionLLM(

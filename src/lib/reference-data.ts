@@ -1,5 +1,5 @@
-import { loadCsv, num, intOrNull } from "@/lib/util/csv";
 import type { Severity } from "@/types/domain";
+import { referenceRows } from "@/lib/reference-data.generated";
 
 /** In-memory, file-backed reference tables (Data-Flow §10). Loaded once, memoized. */
 
@@ -48,10 +48,19 @@ let _brands: BrandPrice[] | null = null;
 let _highRisk: Map<string, HighRiskMed> | null = null;
 
 const norm = (s: string) => s.trim().toLowerCase();
+const num = (value: string | undefined | null): number | null => {
+  if (value === undefined || value === null || value.trim() === "") return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+const intOrNull = (value: string | undefined | null): number | null => {
+  const parsed = num(value);
+  return parsed === null ? null : Math.round(parsed);
+};
 
 export function getCuratedInteractions(): CuratedInteraction[] {
   if (_curated) return _curated;
-  const rows = loadCsv<Record<string, string>>("curated_interactions.csv");
+  const rows = referenceRows.curated_interactions;
   _curated = rows.map((r) => ({
     saltA: norm(r.salt_a),
     saltB: norm(r.salt_b),
@@ -79,7 +88,7 @@ export function findCuratedInteraction(
 
 export function getJanAushadhiProducts(): JaProduct[] {
   if (_ja) return _ja;
-  const rows = loadCsv<Record<string, string>>("janaushadhi_products.csv");
+  const rows = referenceRows.janaushadhi_products;
   _ja = rows.map((r) => ({
     productCode: r.product_code.trim(),
     genericName: norm(r.generic_name),
@@ -94,7 +103,7 @@ export function getJanAushadhiProducts(): JaProduct[] {
 
 export function getBrandPrices(): BrandPrice[] {
   if (_brands) return _brands;
-  const rows = loadCsv<Record<string, string>>("brand_prices.csv");
+  const rows = referenceRows.brand_prices;
   _brands = rows.map((r) => ({
     brandName: r.brand_name.trim(),
     manufacturer: r.manufacturer.trim(),
@@ -116,7 +125,7 @@ export function findBrandPrice(brandName: string): BrandPrice | undefined {
 
 export function getHighRiskMeds(): Map<string, HighRiskMed> {
   if (_highRisk) return _highRisk;
-  const rows = loadCsv<Record<string, string>>("highrisk_meds.csv");
+  const rows = referenceRows.highrisk_meds;
   _highRisk = new Map();
   for (const r of rows) {
     const salt = norm(r.salt);

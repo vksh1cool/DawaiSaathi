@@ -4,7 +4,7 @@ import { PhoneMissed, Phone, PhoneForwarded, PlayCircle, PauseCircle } from "luc
 import { useI18n } from "@/lib/i18n/provider";
 import { DateTime } from "luxon";
 import { Card } from "./ui";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type CallLog = {
   id: string;
@@ -24,6 +24,31 @@ export function CallLogRow({ log }: { log: CallLog }) {
   const { t, lang } = useI18n();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [audioError, setAudioError] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+      audioRef.current = null;
+    };
+  }, []);
+
+  const toggleAudio = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) {
+      audio.pause();
+      return;
+    }
+    setAudioError(false);
+    try {
+      await audio.play();
+      setPlaying(true);
+    } catch {
+      setPlaying(false);
+      setAudioError(true);
+    }
+  };
 
   const getStatusDisplay = () => {
     if (log.outcome === "confirmed") {
@@ -33,7 +58,7 @@ export function CallLogRow({ log }: { log: CallLog }) {
         color: "text-[var(--color-success)]",
       };
     }
-    if (log.outcome === "not_answered") {
+    if (log.outcome === "not_answered" || log.outcome === "failed") {
       return {
         icon: <PhoneMissed size={18} className="text-[var(--color-danger)]" />,
         text: t("history.callMissed", { attempt: log.attempt }),
@@ -42,9 +67,9 @@ export function CallLogRow({ log }: { log: CallLog }) {
     }
     if (log.outcome === "no_input") {
       return {
-        icon: <PhoneForwarded size={18} className="text-[var(--color-warning)]" />,
+        icon: <PhoneForwarded size={18} className="text-[var(--color-warn)]" />,
         text: t("history.callNoInput", { attempt: log.attempt }),
-        color: "text-[var(--color-warning)]",
+        color: "text-[var(--color-warn)]",
       };
     }
     return {
@@ -55,7 +80,9 @@ export function CallLogRow({ log }: { log: CallLog }) {
   };
 
   const status = getStatusDisplay();
-  const relTime = DateTime.fromISO(log.createdAt).toFormat("LLL d, t");
+  const relTime = DateTime.fromISO(log.createdAt)
+    .setLocale(lang === "hi" ? "hi-IN" : "en-IN")
+    .toFormat("LLL d, t");
   const slotName = t(`schedule.slots.${log.slotKey}`);
 
   return (
@@ -81,16 +108,11 @@ export function CallLogRow({ log }: { log: CallLog }) {
             {t("history.audioPreview")}
           </span>
           <button
-            onClick={() => {
-              if (playing) {
-                audioRef.current?.pause();
-                setPlaying(false);
-              } else {
-                audioRef.current?.play();
-                setPlaying(true);
-              }
-            }}
-            className="flex items-center justify-center rounded-full bg-[var(--color-primary-soft)] p-2 text-[var(--color-primary)] transition-colors active:bg-[var(--color-primary)] active:text-white"
+            type="button"
+            onClick={() => void toggleAudio()}
+            aria-label={t("history.audioPreview")}
+            aria-pressed={playing}
+            className="pressable flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] transition-[transform,background-color,color] duration-150 ease-[var(--ease-out)] active:bg-[var(--color-primary)] active:text-white"
           >
             {playing ? <PauseCircle size={20} /> : <PlayCircle size={20} />}
           </button>
@@ -99,10 +121,16 @@ export function CallLogRow({ log }: { log: CallLog }) {
             src={log.medlistUrl}
             onEnded={() => setPlaying(false)}
             onPause={() => setPlaying(false)}
+            onError={() => {
+              setPlaying(false);
+              setAudioError(true);
+            }}
+            preload="none"
             className="hidden"
           />
         </div>
       )}
+      {audioError && <p className="text-xs font-medium text-[var(--color-warn)]" role="alert">{t("history.audioUnavailable")}</p>}
     </Card>
   );
 }

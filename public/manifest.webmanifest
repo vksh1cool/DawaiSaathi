@@ -1,0 +1,23 @@
+{
+  "name": "DawaiSaathi — दवाई साथी",
+  "short_name": "DawaiSaathi",
+  "description": "Medicine reminders, safety checks, and savings for every phone.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAFAF7",
+  "theme_color": "#0F766E",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

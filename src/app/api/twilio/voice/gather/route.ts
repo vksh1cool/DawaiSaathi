@@ -1,7 +1,7 @@
-import { prisma } from "@/lib/db";
-import { readWebhook, audioUrl, twilio } from "@/lib/twilio";
+import { readWebhook, audioUrl, twilio, voiceLocale } from "@/lib/twilio";
 import { handleGatherResult, getAudioSet } from "@/lib/calls";
 import { config } from "@/lib/config";
+import type { CallLanguage, TwilioVoiceLocale } from "@/lib/languages";
 
 export const runtime = "nodejs";
 
@@ -23,16 +23,43 @@ export async function POST(req: Request) {
   const base = config.publicBaseUrl ?? "";
 
   if (result.action === "confirmed") {
-    vr.play(audioUrl(audio.thanks));
+    await appendClip(vr, audio.thanks, audio.fallback.thanks, audio.language);
     vr.hangup();
   } else if (result.action === "repeat") {
     vr.redirect({ method: "POST" }, `${base}/api/twilio/voice/reminder?callId=${callId}&replay=1`);
   } else {
-    // no input / invalid → say goodbye; status callback will retry-or-miss.
-    vr.play(audioUrl(audio.noinput));
+    // An unexpected key gets one more menu, while a second replay request is
+    // treated as no-input. The status callback/sweep owns retry accounting.
+    if (digits && digits !== "1" && digits !== "2") {
+      const gather = vr.gather({
+        numDigits: 1,
+        timeout: 8,
+        method: "POST",
+        action: `${base}/api/twilio/voice/gather?callId=${callId}`,
+      });
+      if (audio.menu) gather.play(await audioUrl(audio.menu));
+      else gather.say({ language: requiredVoiceLocale(audio.language) }, audio.fallback.menu);
+    }
+    await appendClip(vr, audio.noinput, audio.fallback.noinput, audio.language);
     vr.hangup();
   }
   return xml(vr);
+}
+
+async function appendClip(
+  vr: InstanceType<typeof twilio.twiml.VoiceResponse>,
+  file: string | null,
+  fallbackText: string,
+  language: CallLanguage,
+): Promise<void> {
+  if (file) vr.play(await audioUrl(file));
+  else vr.say({ language: requiredVoiceLocale(language) }, fallbackText);
+}
+
+function requiredVoiceLocale(language: CallLanguage): TwilioVoiceLocale {
+  const locale = voiceLocale(language);
+  if (!locale) throw new Error(`No Twilio fallback locale configured for ${language}`);
+  return locale;
 }
 
 function xml(vr: InstanceType<typeof twilio.twiml.VoiceResponse>) {

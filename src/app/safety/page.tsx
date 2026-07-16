@@ -19,41 +19,69 @@ export default function SafetyPage() {
   const [rechecking, setRechecking] = useState(false);
   const [degraded, setDegraded] = useState<string | null>(null);
   const [showAck, setShowAck] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [res, meds] = await Promise.all([
-      apiGet<InteractionsResponse>("/api/interactions"),
-      apiGet<{ medications: unknown[] }>("/api/medications"),
-    ]);
-    setData(res);
-    setMedCount(meds.medications.length);
-  }, []);
+    setLoadError(null);
+    try {
+      const [res, meds] = await Promise.all([
+        apiGet<InteractionsResponse>("/api/interactions"),
+        apiGet<{ medications: unknown[] }>("/api/medications"),
+      ]);
+      setData(res);
+      setMedCount(meds.medications.length);
+    } catch {
+      setLoadError(t("safety.loadError"));
+    }
+  }, [t]);
 
   useEffect(() => {
-    load().catch(() => setData({ open: [], acknowledged: [], lastRunAt: null }));
+    void load();
   }, [load]);
 
   const recheck = async () => {
     setRechecking(true);
     setDegraded(null);
+    setActionError(null);
     try {
       const res = await apiJson<RunResponse>("/api/interactions/run", "POST");
       setDegraded(res.degraded ?? null);
       await load();
+    } catch {
+      setActionError(t("safety.recheckError"));
     } finally {
       setRechecking(false);
     }
   };
 
   const acknowledge = async (id: string) => {
-    await apiJson(`/api/interactions/${id}/acknowledge`, "POST");
-    await load();
+    setAcknowledgingId(id);
+    try {
+      setActionError(null);
+      await apiJson(`/api/interactions/${id}/acknowledge`, "POST");
+      await load();
+    } catch {
+      setActionError(t("safety.acknowledgeError"));
+    } finally {
+      setAcknowledgingId(null);
+    }
   };
 
   if (!data) {
     return (
       <AppShell>
-        <Spinner label={t("common.loading")} />
+        {loadError ? (
+          <Banner tone="warn">
+            <p>{loadError}</p>
+            <GhostButton className="mt-3" onClick={() => void load()}>
+              {t("common.tryAgain")}
+            </GhostButton>
+          </Banner>
+        ) : (
+          <Spinner label={t("common.loading")} />
+        )}
       </AppShell>
     );
   }
@@ -78,6 +106,11 @@ export default function SafetyPage() {
           <Banner tone="warn">{t("safety.degraded")}</Banner>
         </div>
       )}
+      {actionError && (
+        <div className="mb-3">
+          <Banner tone="warn">{actionError}</Banner>
+        </div>
+      )}
 
       {data.open.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-12 text-center">
@@ -90,7 +123,7 @@ export default function SafetyPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {data.open.map((f) => (
-            <FindingCard key={f.id} finding={f} onAcknowledge={acknowledge} />
+            <FindingCard key={f.id} finding={f} onAcknowledge={acknowledge} acknowledging={acknowledgingId === f.id} />
           ))}
         </div>
       )}
@@ -98,7 +131,9 @@ export default function SafetyPage() {
       {data.acknowledged.length > 0 && (
         <div className="mt-6">
           <button
+            type="button"
             onClick={() => setShowAck((v) => !v)}
+            aria-expanded={showAck}
             className="flex items-center gap-1 text-sm font-medium text-[var(--color-text-muted)]"
           >
             {showAck ? <ChevronDown size={16} /> : <ChevronRight size={16} />}

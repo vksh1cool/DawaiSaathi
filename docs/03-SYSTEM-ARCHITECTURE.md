@@ -106,9 +106,13 @@ Two OS processes, one codebase:
 
 | Var | Required | Default | Notes |
 |---|---|---|---|
-| `OPENAI_API_KEY` | ✅ | — | |
+| `AI_PROVIDER` | ✅ | `openai` | `openai` or `nim` |
+| `OPENAI_API_KEY` | ✅† | — | Required for `AI_PROVIDER=openai`; optional with NIM, where it enables generated OpenAI TTS audio |
 | `OPENAI_MODEL` | | `gpt-5.6` | vision + structured outputs model |
-| `OPENAI_TTS_MODEL` | | `gpt-4o-mini-tts` | |
+| `NIM_API_KEY` | ✅† | — | Required for `AI_PROVIDER=nim`; keep in untracked `.env` only |
+| `NIM_BASE_URL` | | `https://integrate.api.nvidia.com/v1` | OpenAI-compatible NIM chat-completions endpoint |
+| `NIM_MODEL` | ✅† | — | Vision-capable model deployed/available through the chosen NIM endpoint |
+| `OPENAI_TTS_MODEL` | | `gpt-4o-mini-tts` | Optional generated audio; Twilio `<Say>` remains the localized fallback |
 | `OPENAI_TTS_VOICE_FEMALE` | | `coral` | |
 | `OPENAI_TTS_VOICE_MALE` | | `onyx` | |
 | `TWILIO_ACCOUNT_SID` | ✅* | — | *not needed if only simulated calls |
@@ -122,6 +126,8 @@ Two OS processes, one codebase:
 | `WORKER_TICK_SECONDS` | | `60` | |
 | `RETRY_DELAY_MINUTES` | | `10` | PRD AC-9.4 |
 | `MAX_CALL_ATTEMPTS` | | `3` | total incl. first attempt |
+
+† Required for the selected provider only.
 
 `src/lib/config.ts` parses these with zod at import time and crashes loudly on missing required vars (except Twilio vars, which produce a logged warning + `telephonyEnabled=false`).
 
@@ -377,7 +383,7 @@ Single-household product: endpoints resolve "the" household/patient server-side;
 - **`GET /api/generics`** → same shape as run (from DB).
 
 ### 7.5 Schedules & doses
-- **`POST /api/schedules`** body `{ schedules: [{ medicationId, times: string[], foodRelation, startDate: "YYYY-MM-DD" }] }` — bulk upsert (one active schedule per medication; re-POST replaces) → `201 { schedules }` → then immediately materializes today+tomorrow DoseEvents (same helper the worker uses).
+- **`POST /api/schedules`** body `{ schedules: [{ medicationId, times: string[], foodRelation, startDate: "YYYY-MM-DD" }] }` — bulk upsert (one active schedule per medication; re-POST replaces). An explicit `times: []` deactivates that medicine's existing schedule and cancels its pending future events. Returns `201 { schedules }`, then immediately materializes today+tomorrow DoseEvents (same helper the worker uses).
 - **`GET /api/schedules`** → `200 { schedules }` (with medication summaries).
 - **`GET /api/schedules/suggest`** → LLM suggestions (§8.5) → `200 { suggestions: [{ medicationId, times, foodRelation, lowConfidence }] }`.
 - **`GET /api/today`** → `200 { groups: [{ time: "20:00", scheduledAtUtc, status: "upcoming|confirmed|missed|mixed", meds: [{ medicationId, brandName, count }], doseEventIds }] }` (grouped by slot, patient-local day).
@@ -477,7 +483,7 @@ User content: `{ type:"input_text", text:"Extract all medicines from this photo.
 ```
 
 #### 8.2.1 Merge & dedupe (deterministic code, `extraction.ts`)
-Key = `lower(brandName)` + primary salt strength; same key across photos ⇒ merge, keeping the higher-confidence value per field; union warnings. No brandName ⇒ key on composition. Then compute expiry warnings (expired / ≤60 days) against today.
+Key = `lower(brandName)` + normalized full composition signature (each salt bound to its own strength and unit); same key across photos ⇒ merge, keeping the higher-confidence value per field; union warnings. No brandName ⇒ key on the same full composition signature. This prevents distinct combination strengths from collapsing into one medicine. Then compute expiry warnings (expired / ≤60 days) against today.
 
 ### 8.3 Prompt 2 — Normalization (text; one call for the whole batch)
 

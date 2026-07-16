@@ -25,22 +25,23 @@ function strengthMatches(salt: Salt, ja: JaProduct): boolean {
 type Candidate = { ja: JaProduct; confidence: "high" | "medium" | "low" };
 
 /** Pick the best Jan Aushadhi candidate for a single-salt medicine. */
-function bestCandidate(salt: Salt, form: string): Candidate | null {
+export function findBestCandidate(salt: Salt, form: string): Candidate | null {
   const saltCandidates = getJanAushadhiProducts().filter((ja) => saltMatches(salt.inn, ja));
   if (saltCandidates.length === 0) return null;
 
-  let best: Candidate | null = null;
-  const rank = { high: 3, medium: 2, low: 1 };
-  for (const ja of saltCandidates) {
-    let confidence: "high" | "medium" | "low";
-    if (strengthMatches(salt, ja)) {
-      confidence = ja.form === form.toLowerCase() ? "high" : "medium";
-    } else {
-      confidence = "low"; // salt-only (strength mismatch)
-    }
-    if (!best || rank[confidence] > rank[best.confidence]) best = { ja, confidence };
+  const exactStrength = saltCandidates.filter((ja) => strengthMatches(salt, ja));
+  if (exactStrength.length > 0) {
+    const sameForm = exactStrength.find((ja) => ja.form === form.toLowerCase());
+    return { ja: sameForm ?? exactStrength[0]!, confidence: sameForm ? "high" : "medium" };
   }
-  return best;
+
+  // A known strength that does not match is not an alternative at all. A
+  // muted low-confidence row is reserved for genuinely salt-only extraction,
+  // never for a product at a different known dose.
+  if (salt.strengthValue != null || salt.strengthUnit != null) return null;
+
+  const sameForm = saltCandidates.find((ja) => ja.form === form.toLowerCase());
+  return { ja: sameForm ?? saltCandidates[0]!, confidence: "low" };
 }
 
 function brandUnitPrice(med: Medication): number | null {
@@ -78,7 +79,7 @@ export async function runGenerics(patientId: string): Promise<GenericsRunResult>
       continue;
     }
 
-    const cand = bestCandidate(salts[0], med.form);
+    const cand = findBestCandidate(salts[0], med.form);
     if (!cand) {
       matches.push(await storeNoMatch(base));
       continue;

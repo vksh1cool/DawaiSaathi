@@ -1,0 +1,81 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dawaisaathi",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-07-16",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // OpenNext writes these static assets during `npm run cf:build`.
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  // OpenNext's static/ISR cache is isolated from patient photos and audio.
+  // `WORKER_SELF_REFERENCE` is required for cache revalidation callbacks.
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "dawaisaathi"
+    }
+  ],
+
+  // Replace `database_id` after running `wrangler d1 create dawaisaathi`.
+  // The R2 bucket stays private: all media is served through authenticated
+  // application routes rather than a public bucket domain.
+  "d1_databases": [
+    {
+      "binding": "DAWAISAATHI_DB",
+      "database_name": "dawaisaathi",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations/d1"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "DAWAISAATHI_ASSETS",
+      "bucket_name": "dawaisaathi-private-assets"
+    },
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "dawaisaathi-next-cache"
+    }
+  ],
+
+  // This Durable Object is owned by OpenNext and queues/de-duplicates ISR
+  // revalidation. It contains cache coordination data, not health records.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NEXT_CACHE_DO_QUEUE",
+        "class_name": "DOQueueHandler"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["DOQueueHandler"]
+    }
+  ],
+
+  "vars": {
+    "DATABASE_DRIVER": "d1",
+    "STORAGE_DRIVER": "r2",
+    "NEXT_INC_CACHE_R2_PREFIX": "next-incremental-cache",
+    "REQUIRE_ACCESS_GATE": "true",
+    "DEFAULT_TZ": "Asia/Kolkata",
+    "DEMO_MODE": "false",
+    "WORKER_TICK_SECONDS": "60",
+    "RETRY_DELAY_MINUTES": "10",
+    "MAX_CALL_ATTEMPTS": "3",
+    "OPENAI_DAILY_LLM_REQUEST_LIMIT": "12",
+    "OPENAI_DAILY_TTS_GENERATION_LIMIT": "12"
+  },
+
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
+  }
+}

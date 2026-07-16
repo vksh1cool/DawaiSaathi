@@ -27,8 +27,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  // Elder accessibility: never lock zoom (02-DESIGN §9)
-  maximumScale: 5,
+  // Elder accessibility: never lock zoom (02-DESIGN §9).
   themeColor: "#0f766e",
 };
 

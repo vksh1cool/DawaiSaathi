@@ -1,28 +1,36 @@
 import { describe, it, expect } from "vitest";
+import { ensureConsult, findDistinctMedicationPair } from "@/lib/interactions";
 
 describe("Interactions Safety Engine", () => {
-  it("flags curated pairs with major severity", () => {
-    const saltA = "aspirin";
-    const saltB = "warfarin";
-    const isCurated = (saltA === "aspirin" && saltB === "warfarin");
-    expect(isCurated).toBe(true);
+  it("selects an interaction pair across different medicines", () => {
+    const pair = findDistinctMedicationPair(
+      [
+        { medId: "combo", brand: "Combo", inn: "aspirin", fdaSearchName: "aspirin" },
+        { medId: "combo", brand: "Combo", inn: "warfarin", fdaSearchName: "warfarin" },
+        { medId: "warfarin", brand: "Warf", inn: "warfarin", fdaSearchName: "warfarin" },
+      ],
+      "aspirin",
+      "warfarin",
+    );
+    expect(pair?.a.medId).toBe("combo");
+    expect(pair?.b.medId).toBe("warfarin");
   });
 
-  it("demotes unquoted openFDA findings to unverified", () => {
-    const evidenceQuote = null;
-    const source = "openfda";
-    let finalSource = source;
-    if (source === "openfda" && !evidenceQuote) {
-      finalSource = "llm_suspected";
-    }
-    expect(finalSource).toBe("llm_suspected");
+  it("does not accept a pair confined to one combination medicine", () => {
+    expect(
+      findDistinctMedicationPair(
+        [
+          { medId: "combo", brand: "Combo", inn: "aspirin", fdaSearchName: "aspirin" },
+          { medId: "combo", brand: "Combo", inn: "warfarin", fdaSearchName: "warfarin" },
+        ],
+        "aspirin",
+        "warfarin",
+      ),
+    ).toBeNull();
   });
 
-  it("appends doctor consult sentence to action", () => {
-    let actionEn = "Take with food.";
-    if (!actionEn.includes("doctor")) {
-      actionEn += " Discuss with your doctor before the next dose.";
-    }
-    expect(actionEn).toContain("doctor");
+  it("appends a consultation instruction when the action omits one", () => {
+    expect(ensureConsult("Do not make a change on your own.", "en")).toContain("doctor or pharmacist");
+    expect(ensureConsult("अपने आप बदलाव न करें।", "hi")).toContain("डॉक्टर या फार्मासिस्ट");
   });
 });

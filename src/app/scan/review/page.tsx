@@ -45,9 +45,17 @@ export default function ReviewPage() {
       router.replace("/scan");
       return;
     }
-    const parsed = JSON.parse(raw) as ScanResult;
-    setScan(parsed);
-    setMeds(parsed.medications);
+    try {
+      const parsed = JSON.parse(raw) as ScanResult;
+      if (!parsed.scanBatchId || !Array.isArray(parsed.medications) || !Array.isArray(parsed.imageIssues)) {
+        throw new Error("Invalid scan session");
+      }
+      setScan(parsed);
+      setMeds(parsed.medications);
+    } catch {
+      sessionStorage.removeItem("dawaisaathi.scan");
+      router.replace("/scan");
+    }
   }, [router]);
 
   const confirm = async () => {
@@ -55,11 +63,19 @@ export default function ReviewPage() {
     setError(null);
     try {
       // Normalize salts (strip empties) and persist.
-      const cleaned = meds.map((m) => ({
-        ...m,
-        salts: m.salts.filter((s) => s.inn.trim() !== ""),
-        displayGeneric: m.displayGeneric || m.salts.map((s) => s.inn).filter(Boolean).join(" + "),
-      }));
+      const cleaned = meds.map((m) => {
+        const salts = m.salts.filter((salt) => salt.inn.trim() !== "");
+        return {
+          ...m,
+          salts,
+          displayGeneric: m.displayGeneric || salts.map((salt) => salt.inn).join(" + "),
+        };
+      });
+      if (cleaned.some((medication) => medication.salts.length === 0)) {
+        setError(t("review.saltRequired"));
+        setSaving(false);
+        return;
+      }
       await apiJson("/api/medications", "POST", {
         scanBatchId: scan?.scanBatchId,
         medications: cleaned,

@@ -20,12 +20,10 @@ export const GET = withErrorBoundary(async () => {
 
   return NextResponse.json({
     calls: calls.map((c) => {
-      let medlistUrl: string | null = null;
-      try {
-        medlistUrl = `/api/audio/${getAudioSet(c).medlist}`;
-      } catch {
-        /* legacy row */
-      }
+      // getAudioSet already validates legacy/malformed metadata and falls back
+      // safely, so this mapping stays deterministic without a second parser.
+      const medlist = getAudioSet(c).medlist;
+      const medlistUrl = medlist ? `/api/audio/${medlist}` : null;
       return {
         id: c.id,
         time: utcToLocalTime(c.scheduledAtUtc, tz),

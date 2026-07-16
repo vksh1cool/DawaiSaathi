@@ -11,10 +11,13 @@
 | 3 | [`03-SYSTEM-ARCHITECTURE.md`](03-SYSTEM-ARCHITECTURE.md) | File tree, Prisma schema, every API contract, LLM prompts + JSON schemas, openFDA/Twilio/TTS integration, worker design. **Wins all technical conflicts.** | Building anything backend |
 | 4 | [`04-DATA-FLOW-INTEGRATION.md`](04-DATA-FLOW-INTEGRATION.md) | Runtime sequences with example payloads, DoseEvent state machine, seed CSVs (exact rows), caching/idempotency, failure matrix | Wiring flows end-to-end; writing tests |
 | 5 | [`05-TECH-STACK.md`](05-TECH-STACK.md) | Exact dependencies + versions, setup commands, Twilio/ngrok/OpenAI account steps, costs | Day 0 setup |
+| 6 | [`06-FREE-DEMO-AUTH-BOUNDARY.md`](06-FREE-DEMO-AUTH-BOUNDARY.md) | The approved free-demo runtime, OpenAI spend guardrail, and safe boundary for a Supabase Auth experiment | Before adding cloud auth or deploying the demo |
+| 7 | [`07-GLOBAL-VOICE-LANGUAGES.md`](07-GLOBAL-VOICE-LANGUAGES.md) | Supported reminder languages, Twilio voice mapping, generated-audio guardrails, and native-review release checks | Before enabling a new country or spoken-language cohort |
+| 8 | [`08-CLOUDFLARE-PRODUCTION-ARCHITECTURE.md`](08-CLOUDFLARE-PRODUCTION-ARCHITECTURE.md) | Required Supabase, Workers, Queues, Durable Object, private R2, cache, and rollout design for a real multi-household deployment | Before provisioning or deploying cloud production |
 
 ## For the implementing agent
 
 - Requirements carry IDs (`US-n`, `AC-n.m`, `F-n`) — reference them in commits/tests.
-- All product decisions are **frozen**; do not re-litigate scope (PRD §11). Defaults are marked *(default)* and live in `src/lib/config.ts`.
+- All product decisions are **frozen**; the free-demo/auth decision record is the only explicit amendment. Defaults are marked *(default)* and live in `src/lib/config.ts`.
 - Build order = PRD §15 (Day 1 → Day 5). Each day has a testable gate.
 - Non-negotiables to re-read before shipping: PRD §9 (medical safety), Arch §8.4 post-validation gates, Data-Flow §12 failure matrix.

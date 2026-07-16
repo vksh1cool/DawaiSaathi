@@ -14,15 +14,19 @@ type Adherence = {
   percent: number;
   byDay: { date: string; confirmed: number; missed: number; pending: number }[];
 };
+type CallFilter = "all" | "confirmed" | "missed";
 
 export default function HistoryPage() {
   const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [adherence, setAdherence] = useState<Adherence | null>(null);
   const [calls, setCalls] = useState<CallLog[]>([]);
-  const [filter, setFilter] = useState<"all" | "confirmed" | "missed">("all");
+  const [filter, setFilter] = useState<CallFilter>("all");
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const [adhRes, callsRes] = await Promise.all([
         apiGet<Adherence>("/api/adherence?days=7"),
@@ -30,13 +34,15 @@ export default function HistoryPage() {
       ]);
       setAdherence(adhRes);
       setCalls(callsRes.calls);
+    } catch {
+      setError(t("history.loadError"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   if (loading) {
@@ -47,16 +53,37 @@ export default function HistoryPage() {
     );
   }
 
+  if (error) {
+    return (
+      <AppShell>
+        <Card tone="warn">
+          <p className="text-sm">{error}</p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="pressable mt-3 min-h-[48px] rounded-[12px] bg-[var(--color-surface)] px-4 font-semibold text-[var(--color-primary)] transition-transform duration-150 ease-[var(--ease-out)]"
+          >
+            {t("common.tryAgain")}
+          </button>
+        </Card>
+      </AppShell>
+    );
+  }
+
   const filteredCalls = calls.filter((c) => {
     if (filter === "confirmed") return c.outcome === "confirmed";
-    if (filter === "missed") return c.outcome === "not_answered" || c.outcome === "no_input";
+    if (filter === "missed") return c.outcome === "not_answered" || c.outcome === "no_input" || c.outcome === "failed";
     return true;
   });
 
   return (
     <AppShell>
       <div className="mb-6 flex items-center gap-3">
-        <Link href="/" className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--color-bg)] transition-colors active:bg-[var(--color-border)]">
+        <Link
+          href="/"
+          aria-label={t("common.back")}
+          className="pressable flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-bg)] transition-[transform,background-color] duration-150 ease-[var(--ease-out)] active:bg-[var(--color-border)]"
+        >
           <ArrowLeft size={20} />
         </Link>
         <h1 className="text-2xl font-bold">{t("home.history")}</h1>
@@ -74,8 +101,8 @@ export default function HistoryPage() {
           <Filter size={16} className="text-[var(--color-text-muted)]" />
           <select
             value={filter}
-            onChange={(e) => setFilter(e.target.value as any)}
-            className="rounded-full bg-[var(--color-bg)] px-3 py-1 text-sm outline-none ring-1 ring-[var(--color-border)] focus:ring-[var(--color-primary)]"
+            onChange={(e) => setFilter(e.target.value as CallFilter)}
+            className="min-h-[44px] rounded-full bg-[var(--color-bg)] px-3 py-1 text-sm outline-none ring-1 ring-[var(--color-border)] focus:ring-[var(--color-primary)]"
           >
             <option value="all">{t("history.filterAll")}</option>
             <option value="confirmed">{t("history.filterConfirmed")}</option>

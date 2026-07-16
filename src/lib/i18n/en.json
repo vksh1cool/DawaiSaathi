@@ -7,6 +7,7 @@
     "disclaimer": "DawaiSaathi organizes your prescribed medicines. It is not medical advice. Always confirm changes with your doctor or pharmacist."
   },
   "nav": {
+    "primary": "Primary navigation",
     "home": "Home",
     "scan": "Scan",
     "safety": "Safety",
@@ -23,6 +24,7 @@
     "close": "Close",
     "edit": "Edit",
     "remove": "Remove",
+    "skipToContent": "Skip to content",
     "add": "Add",
     "demo": "DEMO",
     "perMonth": "/month",
@@ -30,21 +32,52 @@
   },
   "onboarding": {
     "welcomeTitle": "Welcome to DawaiSaathi",
+    "welcomeEyebrow": "A calmer medicine routine",
+    "welcomeBody": "Set up reminders for yourself or someone you care for. It takes about a minute.",
+    "stepProgress": "Step {current} of {total}",
+    "progressLabel": "Setup progress",
+    "appLanguage": "App language",
     "yourName": "Your name",
     "yourNamePlaceholder": "e.g. Priya",
+    "nameRequired": "Please enter your name to continue.",
+    "privacyNote": "Your medicine information stays on this device. You can change or erase it any time in Settings.",
+    "patientEyebrow": "Who are reminders for?",
     "patientTitle": "Who takes these medicines?",
+    "patientBody": "Choose yourself or a family member, then add the number that should receive reminder calls.",
     "patientName": "Their name",
     "patientNamePlaceholder": "e.g. Kamla Devi",
+    "patientRequired": "Please enter the person's name to continue.",
     "patientPhone": "Their phone number",
     "phone_help": "We call this number at medicine time. Works on any phone — no app needed.",
+    "phoneHelp": "Choose the country code, then enter the phone number used for medicine reminders.",
+    "phoneCountry": "Phone country code",
     "selfCare": "I take these medicines myself",
+    "careForSomeone": "I am setting this up for someone else",
+    "voiceEyebrow": "Make the reminder feel familiar",
     "langTitle": "Which language should {name}'s calls be in?",
+    "voiceBody": "Choose the language and voice your family member will hear. You can change both later in Settings.",
+    "callLanguage": "Call language",
+    "callLanguageHelp": "Choose the language your family member is most comfortable hearing. It can be changed later in Settings.",
+    "generatedVoiceRequirement": "Phone calls in this language use generated voice audio. Keep voice audio enabled for live reminders.",
     "voice": "Voice",
     "voiceFemale": "Female",
     "voiceMale": "Male",
     "previewVoice": "Preview voice",
+    "previewLoading": "Preparing preview…",
+    "previewHelp": "A short sample will play before you finish setup.",
+    "previewPlaying": "Playing your selected call voice.",
+    "previewDevice": "Using your device's voice for this preview. Your selected call voice is saved.",
+    "previewUnavailable": "We couldn't play a preview right now. Your selected call language and voice will still be saved.",
     "finish": "Finish setup",
-    "phoneInvalid": "Enter a valid 10-digit phone number"
+    "finishing": "Saving setup…",
+    "finishError": "We couldn't finish setup. Please try again.",
+    "phoneInvalid": "Enter a valid 10-digit phone number",
+    "patientLabel": "Patient",
+    "patientLang": "Call language",
+    "caregiverLabel": "Caregiver",
+    "caregiverName": "Your name",
+    "lang_hi": "Hindi",
+    "lang_en": "English"
   },
   "home": {
     "today": "Today",
@@ -58,9 +91,16 @@
     "missed": "Missed — {n} calls unanswered",
     "markTaken": "Mark taken",
     "callAgain": "Call again",
+    "callStarting": "Calling {name}…",
+    "callFailed": "We couldn't place the call. Please try again.",
+    "markFailed": "We couldn't mark this dose as taken. Please try again.",
+    "loadError": "We couldn't load today's medicines. Please refresh and try again.",
+    "expiredMedicine": "{name} is expired. Please confirm with a pharmacist before using it.",
+    "expiringMedicine": "{name} expires soon. Please check the strip before the next dose.",
     "medsCount": "{n} meds",
     "weekAdherence": "This week",
     "takenPercent": "{percent}% taken",
+    "adherenceDay": "{date}: {confirmed} confirmed, {missed} missed, {pending} pending.",
     "savingTeaser": "Saving {amount}{per}",
     "toSavings": "Savings"
   },
@@ -73,7 +113,11 @@
     "phaseSalts": "Identifying salts",
     "phaseDetails": "Checking details",
     "error_retry": "We couldn't read this clearly — one more photo in daylight will help.",
-    "tooMany": "Please use at most 5 photos"
+    "tooMany": "Please use at most 5 photos",
+    "unsupportedImage": "Please add a photo in a supported image format.",
+    "duplicateImage": "That photo is already added.",
+    "photoLimit": "Add up to {max} clear photos.",
+    "photoAlt": "photo of medicine strip {n}"
   },
   "review": {
     "title": "Check what we found ({n})",
@@ -92,7 +136,8 @@
     "expired": "This strip is expired ({date}). Do not use — replace it.",
     "expiring": "This strip expires soon ({date}).",
     "highRisk": "HIGH-RISK MEDICINE",
-    "highRiskBody": "{name} needs extra care."
+    "highRiskBody": "{name} needs extra care.",
+    "saltRequired": "Add at least one salt for every medicine before confirming."
   },
   "safety": {
     "title": "Safety check",
@@ -110,7 +155,10 @@
     "sevMajor": "MAJOR",
     "sevModerate": "MODERATE",
     "sevMinor": "MINOR",
-    "sevUnverified": "UNVERIFIED"
+    "sevUnverified": "UNVERIFIED",
+    "loadError": "We couldn't load the safety check. Please try again.",
+    "recheckError": "We couldn't re-check these medicines. Please try again.",
+    "acknowledgeError": "We couldn't save that acknowledgement. Please try again."
   },
   "savings": {
     "title": "Savings with Jan Aushadhi",
@@ -118,13 +166,16 @@
     "heroYear": "{amount} every year",
     "saves": "Saves {amount}{per}",
     "noMatch": "No Jan Aushadhi match found",
+    "noSavingsSummary": "We have not found a verified saving yet.",
     "confHigh": "high",
     "confMedium": "medium",
     "confLow": "low — not counted in total",
     "caption": "Same salt, same strength. Confirm the switch with your pharmacist.",
     "findKendra": "Find a Jan Aushadhi Kendra",
     "estimated": "est.",
-    "perUnit": "{brand}/unit → {ja}/unit"
+    "perUnit": "{brand}/unit → {ja}/unit",
+    "loadError": "We couldn't load savings right now. Please try again.",
+    "empty": "No verified generic matches are available yet. Check again after adding medicines."
   },
   "schedule": {
     "title": "Set reminder times",
@@ -138,9 +189,23 @@
     "afternoon": "Afternoon",
     "evening": "Evening",
     "night": "Night",
+    "slots": {
+      "morning": "Morning",
+      "afternoon": "Afternoon",
+      "evening": "Evening",
+      "night": "Night"
+    },
     "suggested": "Suggested from label — you decide.",
     "previewCall": "Preview {name}'s call",
+    "previewUnavailable": "Voice preview is unavailable. It will be ready once voice is configured.",
+    "loadError": "We couldn't load your medicines. Please try again.",
+    "saveError": "We couldn't save the reminder schedule. Please try again.",
+    "empty": "Add a medicine before setting reminder times.",
+    "goToScan": "Scan medicines",
     "start": "Start reminders",
+    "stopRemindersTitle": "Stop reminders for these medicines?",
+    "stopRemindersBody": "These medicines have no selected time. Continuing will stop their active reminders and cancel future pending reminders.",
+    "stopRemindersConfirm": "Stop reminders",
     "mtx_warning": "Methotrexate is usually taken WEEKLY, not daily — confirm the schedule with the doctor before continuing. Type {name} to override."
   },
   "history": {
@@ -153,7 +218,18 @@
     "noInput": "no answer on keypad",
     "notAnswered": "not answered",
     "playAudio": "Play call audio",
-    "empty": "No reminder calls yet"
+    "empty": "No reminder calls yet",
+    "callLogs": "Call history",
+    "filterAll": "All",
+    "filterConfirmed": "Confirmed",
+    "filterMissed": "Missed",
+    "callConfirmed": "Confirmed on attempt {attempt}",
+    "callMissed": "Not answered on attempt {attempt}",
+    "callNoInput": "No keypad response on attempt {attempt}",
+    "callPending": "Call in progress (attempt {attempt})",
+    "audioPreview": "Call audio",
+    "loadError": "We couldn't load your history. Please try again.",
+    "audioUnavailable": "This call audio could not be played."
   },
   "profile": {
     "title": "Profile & settings",
@@ -161,10 +237,22 @@
     "patient": "Patient name",
     "phone": "Patient phone",
     "callLang": "Call language",
+    "loadError": "We couldn't load your profile. Please try again.",
     "uiLang": "App language",
     "deletePhotos": "Delete all photos",
     "eraseAll": "Erase all data",
     "eraseConfirm": "Type DELETE to erase everything",
+    "eraseData": "Erase all data",
+    "deletePhotosConfirm": "Delete all uploaded medicine photos? Your confirmed medicine list will stay.",
+    "photosDeleted": "All uploaded photos were deleted.",
+    "deletePhotosError": "We couldn't delete the photos. Please try again.",
+    "dangerZone": "Danger zone",
+    "saved": "Saved",
+    "saveError": "We couldn't save that change. Please try again.",
+    "eraseError": "We couldn't erase your data. Please try again.",
+    "demoLoad": "Load demo data",
+    "demoLoadConfirm": "Load the Kamla Devi demo? This replaces current data.",
+    "demoLoadError": "We couldn't load the demo. Please try again.",
     "version": "App version"
   },
   "call": {
@@ -174,6 +262,7 @@
     "press2": "2",
     "outcomeConfirmed": "Dose confirmed",
     "outcomeNoInput": "No keypress — will retry",
-    "listen": "Listen"
+    "listen": "Listen",
+    "simFailed": "The simulated call could not start. Please try again."
   }
 }

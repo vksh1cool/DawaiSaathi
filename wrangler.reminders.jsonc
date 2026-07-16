@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dawaisaathi-reminders",
+  "main": "worker/cloudflare-reminders.ts",
+  "compatibility_date": "2026-07-16",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Service binding keeps the scheduler off the public internet. The app
+  // route still checks a shared secret to defend against misconfiguration.
+  "services": [
+    { "binding": "DAWAISAATHI_APP", "service": "dawaisaathi" }
+  ],
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
+  }
+}

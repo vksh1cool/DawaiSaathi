@@ -1,4 +1,5 @@
 import { callLLM } from "@/lib/openai";
+import { AppError } from "@/lib/errors";
 import {
   NORMALIZATION_SYSTEM,
   NORMALIZATION_SCHEMA,
@@ -33,9 +34,19 @@ export async function buildDraftMedications(rawMeds: RawMed[]): Promise<DraftMed
     zodSchema: normalizationZod,
   });
 
+  // The normalizer is required to preserve the exact input cardinality and
+  // order. Rendering a partially-normalized list would hide salts from the
+  // safety engine, so fail the scan instead of guessing a fallback.
+  if (results.length !== rawMeds.length) {
+    throw new AppError("UPSTREAM_OPENAI", "The AI could not verify every medicine in this scan.");
+  }
+
   return rawMeds.map((raw, i) => {
     const norm = results[i];
-    const salts: Salt[] = norm?.salts ?? [];
+    const salts: Salt[] = norm.salts;
+    if (raw.composition.length > 0 && salts.length === 0) {
+      throw new AppError("UPSTREAM_OPENAI", "The AI could not verify a medicine composition in this scan.");
+    }
 
     // High-risk tagging (code, not LLM) — Arch §8.3 / PRD F2.
     let highRisk = false;
@@ -74,8 +85,8 @@ export async function buildDraftMedications(rawMeds: RawMed[]): Promise<DraftMed
       warnings,
       highRisk,
       highRiskReason,
-      usualFrequencyHint: norm?.usualFrequencyHint ?? null,
-      displayGeneric: norm?.displayGeneric ?? salts.map((s) => s.inn).join(" + "),
+      usualFrequencyHint: norm.usualFrequencyHint,
+      displayGeneric: norm.displayGeneric || salts.map((s) => s.inn).join(" + "),
     } satisfies DraftMedication;
   });
 }

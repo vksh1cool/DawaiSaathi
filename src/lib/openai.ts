@@ -3,13 +3,23 @@ import type { z } from "zod";
 import { config } from "@/lib/config";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+import { reserveOpenAiRequest } from "@/lib/openai-budget";
 
 /**
  * OpenAI client + structured-output wrapper (Arch §8.1).
  * The LLM call is injectable so tests never hit the network.
  */
 
-export const openai = new OpenAI({ apiKey: config.openaiApiKey });
+/** OpenAI SDK also speaks the OpenAI-compatible NIM chat-completions API. */
+export const openai = new OpenAI({
+  apiKey: config.llmApiKey,
+  ...(config.llmBaseUrl ? { baseURL: config.llmBaseUrl } : {}),
+});
+
+/** TTS stays on OpenAI unless a dedicated NIM Speech deployment is configured. */
+export const openAiTts = config.openAiTtsApiKey
+  ? new OpenAI({ apiKey: config.openAiTtsApiKey })
+  : null;
 
 export type LLMText = { type: "text"; text: string };
 export type LLMImage = { type: "image"; dataUrl: string };
@@ -40,35 +50,54 @@ const realClient: LLMClient = {
     let lastErr: unknown;
     for (let attempt = 0; attempt <= backoffs.length; attempt++) {
       try {
+        // Count every actual network attempt, including a retry. This is more
+        // conservative than a cost estimate and makes the local demo cap a
+        // true stop rather than merely an after-the-fact usage alert.
+        await reserveOpenAiRequest("llm");
         const started = Date.now();
-        const resp = await openai.chat.completions.create({
-          model: config.openaiModel,
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: userParts },
-          ],
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: schemaName,
-              strict: true,
-              schema: jsonSchema as Record<string, unknown>,
-            },
-          },
-        });
+        const messages = [
+          { role: "system" as const, content: system },
+          { role: "user" as const, content: userParts },
+        ];
+        const resp = await openai.chat.completions.create(
+          config.llmProvider === "openai"
+            ? {
+                model: config.llmModel,
+                messages,
+                response_format: {
+                  type: "json_schema",
+                  json_schema: {
+                    name: schemaName,
+                    strict: true,
+                    schema: jsonSchema as Record<string, unknown>,
+                  },
+                },
+              }
+            : {
+                // NIM exposes the chat-completions surface, but deployed
+                // models do not all implement OpenAI's strict JSON-schema
+                // response format. Prompts demand JSON and zod remains the
+                // final validation boundary below.
+                model: config.llmModel,
+                messages,
+              },
+        );
         logger.info(
-          { service: "openai", op: schemaName, ms: Date.now() - started, ok: true },
+          { service: config.llmProvider, op: schemaName, ms: Date.now() - started, ok: true },
           "llm call",
         );
         const text = resp.choices[0]?.message?.content;
         if (!text) throw new Error("Empty completion");
         return text;
       } catch (err) {
+        // Budget errors are intentional product decisions, not transient
+        // upstream failures. Retrying them would defeat the hard cap.
+        if (err instanceof AppError) throw err;
         lastErr = err;
         const status = (err as { status?: number })?.status;
         const retryable = status === 429 || (status !== undefined && status >= 500) || status === undefined;
         if (attempt < backoffs.length && retryable) {
-          logger.warn({ service: "openai", op: schemaName, status, attempt }, "llm retry");
+          logger.warn({ service: config.llmProvider, op: schemaName, status, attempt }, "llm retry");
           await sleep(backoffs[attempt]);
           continue;
         }

@@ -35,7 +35,7 @@
 | Tests | vitest | 2.x | fast TS-native; suites in Arch §15 | jest — slower TS setup |
 | CSV | papaparse | latest | robust quoted-field parsing for seed files | hand-rolled split — breaks on quoted commas in Hindi text |
 
-**Explicitly not used:** Redux/Zustand (React state + SWR-style fetch hooks suffice), NextAuth (no auth in MVP, PRD NG4), Docker (single laptop demo), LangChain (direct SDK calls are simpler and debuggable).
+**Explicitly not used:** Redux/Zustand (React state + SWR-style fetch hooks suffice), NextAuth (no auth in MVP, PRD NG4), Docker (single laptop demo), LangChain (direct SDK calls are simpler and debuggable). Supabase Auth is permitted only as the isolated, non-authoritative experiment defined in [`06-FREE-DEMO-AUTH-BOUNDARY.md`](06-FREE-DEMO-AUTH-BOUNDARY.md); it does not protect or store demo health data.
 
 ## 2. package.json (target shape)
 
@@ -65,10 +65,10 @@
 ## 3. Local dev setup (from clean clone to running demo)
 
 ```bash
-# 0) prerequisites: Node 20+, npm 10+, ngrok account (free), OpenAI key, Twilio trial account
+# 0) prerequisites: Node 20+, npm 10+, ngrok account (free), one supported LLM key, Twilio trial account
 git clone <repo> && cd <repo>
 npm install
-cp .env.example .env            # fill OPENAI_API_KEY (Twilio vars can wait until Day 4)
+cp .env.example .env            # choose OpenAI or NIM; Twilio vars can wait until Day 4
 npx prisma migrate dev --name init
 npm run seed                    # loads data/*.csv reference tables
 npm run dev                     # terminal 1 → http://localhost:3000 (onboarding S0)
@@ -85,8 +85,8 @@ DEMO_PATIENT_PHONE=+91XXXXXXXXXX npm run demo:seed # Kamla Devi household, meds,
 
 ## 4. Third-party service setup
 
-### 4.1 OpenAI
-Create key at platform.openai.com → set `OPENAI_API_KEY`. Confirm org has access to `gpt-5.6` (else set `OPENAI_MODEL` to the best available vision+structured-outputs model — the code reads the env, never hardcodes). Budget alert at $25.
+### 4.1 LLM provider and voice fallback
+Use either `AI_PROVIDER=openai` with `OPENAI_API_KEY`, or `AI_PROVIDER=nim` with `NIM_API_KEY`, `NIM_BASE_URL`, and a vision-capable `NIM_MODEL`. The NIM route uses its OpenAI-compatible chat-completions surface and validates every response locally with zod. If generated OpenAI TTS is not configured, reminder calls still use Twilio's language-aware `<Say>` fallback; add an `OPENAI_API_KEY` as well when you want cached MP3 call audio.
 
 ### 4.2 Twilio (trial — ~15 min, do this on Day 1 even though code needs it Day 4)
 1. Sign up → verify your own mobile.
@@ -114,6 +114,7 @@ Works keyless (≈1 000 req/day/IP). Optional free key → `OPENFDA_API_KEY` (12
 
 ## 6. Deployment posture
 **Demo (frozen): run locally + ngrok.** Rationale: Twilio needs one public URL; localhost keeps health data local (a stated feature, PRD §10) and removes deploy risk minutes before judging.
+**Auth experiment (frozen boundary):** Supabase Free may be used to test signup, sign-in, and session UX only. It is not connected to the local SQLite household or medication APIs until the migration gates in [`06-FREE-DEMO-AUTH-BOUNDARY.md`](06-FREE-DEMO-AUTH-BOUNDARY.md) are met.
 **Post-hackathon path (documented, not built):** Railway/Render/Fly for the two processes (Vercel alone can't host the persistent worker), Postgres swap (Prisma provider change + enum migration), Redis+BullMQ if multi-instance, Exotel for India telephony pricing/compliance, real auth (household accounts), WhatsApp channel via Meta Cloud API.
 
 ## 7. Known constraints accepted for the week
