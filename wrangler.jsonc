@@ -27,7 +27,7 @@
     {
       "binding": "DAWAISAATHI_DB",
       "database_name": "dawaisaathi",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "5b169b9a-5a27-41cd-866b-587665e80a42",
       "migrations_dir": "migrations/d1"
     }
   ],
