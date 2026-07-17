@@ -60,9 +60,9 @@ export function CallLogRow({ log }: { log: CallLog }) {
     }
     if (log.outcome === "not_answered" || log.outcome === "failed") {
       return {
-        icon: <PhoneMissed size={18} className="text-[var(--color-danger)]" />,
+        icon: <PhoneMissed size={18} className="text-[var(--color-warn)]" />,
         text: t("history.callMissed", { attempt: log.attempt }),
-        color: "text-[var(--color-danger)]",
+        color: "text-[var(--color-warn)]",
       };
     }
     if (log.outcome === "no_input") {

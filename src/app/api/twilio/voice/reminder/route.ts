@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { readWebhook, audioUrl, twilio, voiceLocale } from "@/lib/twilio";
 import { getAudioSet } from "@/lib/calls";
+import { legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
 import { config } from "@/lib/config";
 import { logger } from "@/lib/logger";
 import type { CallLanguage, TwilioVoiceLocale } from "@/lib/languages";
@@ -12,9 +13,16 @@ export async function POST(req: Request) {
   const { params, valid } = await readWebhook(req);
   if (!valid) return new Response("invalid signature", { status: 403 });
 
+  const vr = new twilio.twiml.VoiceResponse();
+  // A valid hangup prevents webhook retry churn while preserving the hard
+  // boundary between Supabase tenants and the old shared D1 demo records.
+  if (legacyTenantDataBlocked()) {
+    vr.hangup();
+    return xml(vr);
+  }
+
   const callId = new URL(req.url).searchParams.get("callId");
   const call = callId ? await prisma.reminderCall.findUnique({ where: { id: callId } }) : null;
-  const vr = new twilio.twiml.VoiceResponse();
 
   if (!call) {
     vr.hangup();

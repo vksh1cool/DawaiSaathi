@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, Chip } from "@/components/ui";
+import { Card, Chip, Field, TextInput } from "@/components/ui";
 import { HighRiskBanner } from "@/components/HighRiskBanner";
 import { useI18n } from "@/lib/i18n/provider";
 import type { FoodRelation } from "@/types/domain";
@@ -25,6 +25,7 @@ export type ScheduleDraft = {
   displayGeneric: string;
   highRisk: boolean;
   times: string[];
+  doseInstruction: string;
   foodRelation: FoodRelation;
   lowConfidence: boolean;
 };
@@ -49,6 +50,21 @@ export function ScheduleCard({
       <div>
         <p className="font-semibold">{draft.brandName}</p>
         <p className="text-sm text-[var(--color-text-muted)]">{draft.displayGeneric}</p>
+      </div>
+
+      <div>
+        <Field label={t("schedule.doseInstruction")}>
+          <TextInput
+            value={draft.doseInstruction}
+            onChange={(event) => onChange({ ...draft, doseInstruction: event.target.value })}
+            placeholder={t("schedule.dosePlaceholder")}
+            autoComplete="off"
+            aria-describedby={`dose-help-${draft.medicationId}`}
+          />
+        </Field>
+        <p id={`dose-help-${draft.medicationId}`} className="mt-1.5 text-xs leading-5 text-[var(--color-text-muted)]">
+          {t("schedule.doseHelp")}
+        </p>
       </div>
 
       <div>

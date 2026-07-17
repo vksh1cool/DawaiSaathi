@@ -9,8 +9,10 @@ import { placeCall } from "@/lib/twilio";
 import { buildReminderScripts } from "@/lib/ivr/scripts";
 import { getSlotMedsForEvents } from "@/lib/reminder";
 import { getHousehold } from "@/lib/household";
+import { usesD1 } from "@/lib/cloudflare-runtime";
 import { utcToLocalTime, slotLabel } from "@/lib/util/dates";
 import { isCallLanguage, twilioVoiceLocale, type CallLanguage } from "@/lib/languages";
+import { deliverQueuedSmsReminder, queueSmsReminderFallback } from "@/lib/sms";
 import type { Patient, ReminderCall } from "@prisma/client";
 
 /** Shared reminder-call logic used by the worker, webhooks, and simulator (Arch §10, §12.3). */
@@ -119,10 +121,23 @@ export async function placeGroupReminder(opts: {
     );
   }
 
-  // Claim the entire pending group atomically before creating a call. This
-  // protects against a manual demo trigger racing the worker (or a double tap
-  // in the UI) and is the only point at which scheduled -> calling may occur.
-  const call = await prisma.$transaction(async (tx) => {
+  const callData = {
+    patientId: patient.id,
+    scheduledAtUtc,
+    doseEventIdsJson: JSON.stringify(pendingDoseEventIds),
+    attempt: Math.min(...candidateEvents.map((event) => event.attempts)) + 1,
+    mode,
+    audioFile: JSON.stringify(audioSet),
+  };
+
+  // D1 does not support Prisma transactions. A conditional bulk update is a
+  // single SQLite statement, so it becomes the claim boundary there. On
+  // Postgres/SQLite it stays inside the transaction with the call record.
+  // Either way, only a caller that changes every event from scheduled to
+  // calling may create the ReminderCall.
+  const call = usesD1()
+    ? await claimAndCreateCallOnD1(patient.id, pendingDoseEventIds, callData)
+    : await prisma.$transaction(async (tx) => {
     const current = await tx.doseEvent.findMany({
       where: { id: { in: pendingDoseEventIds }, patientId: patient.id, status: "scheduled" },
       select: { id: true, attempts: true },
@@ -131,21 +146,14 @@ export async function placeGroupReminder(opts: {
       throw new AppError("CONFLICT", "This reminder is already being handled.");
     }
 
-    const attempt = Math.min(...current.map((event) => event.attempts)) + 1;
-    await tx.doseEvent.updateMany({
+    const claimed = await tx.doseEvent.updateMany({
       where: { id: { in: pendingDoseEventIds }, status: "scheduled" },
       data: { status: "calling", nextAttemptAtUtc: null },
     });
-    return tx.reminderCall.create({
-      data: {
-        patientId: patient.id,
-        scheduledAtUtc,
-        doseEventIdsJson: JSON.stringify(pendingDoseEventIds),
-        attempt,
-        mode,
-        audioFile: JSON.stringify(audioSet),
-      },
-    });
+    if (claimed.count !== pendingDoseEventIds.length) {
+      throw new AppError("CONFLICT", "This reminder is already being handled.");
+    }
+    return tx.reminderCall.create({ data: callData });
   });
 
   let placed = mode === "simulated";
@@ -156,12 +164,15 @@ export async function placeGroupReminder(opts: {
       placed = true;
       logger.info({ callId: call.id, attempt: call.attempt }, "reminder call placed");
     } catch (err) {
+      // Settle the failed attempt before reopening events for a retry. If the
+      // call-record write itself fails, leaving them calling is safer than a
+      // second outbound call; the orphan sweep will recover that lease.
+      await prisma.reminderCall.update({ where: { id: call.id }, data: { outcome: "failed" } });
       // Revert: try again next tick.
       await prisma.doseEvent.updateMany({
         where: { id: { in: pendingDoseEventIds }, status: "calling" },
         data: { status: "scheduled", nextAttemptAtUtc: nextAttempt() },
       });
-      await prisma.reminderCall.update({ where: { id: call.id }, data: { outcome: "failed" } });
       logger.error({ err, callId: call.id }, "reminder call failed to place");
     }
   }
@@ -178,6 +189,47 @@ export async function placeGroupReminder(opts: {
     },
     placed,
   };
+}
+
+type ReminderCallCreateData = {
+  patientId: string;
+  scheduledAtUtc: Date;
+  doseEventIdsJson: string;
+  attempt: number;
+  mode: "twilio" | "simulated";
+  audioFile: string;
+};
+
+/**
+ * D1-safe alternative to an interactive transaction. `updateMany` becomes a
+ * conditional compare-and-set: one concurrent worker claims all events and
+ * every other worker observes a short claim and exits before creating a call.
+ */
+export async function claimAndCreateCallOnD1(
+  patientId: string,
+  doseEventIds: string[],
+  callData: ReminderCallCreateData,
+) {
+  const claimed = await prisma.doseEvent.updateMany({
+    where: { id: { in: doseEventIds }, patientId, status: "scheduled" },
+    data: { status: "calling", nextAttemptAtUtc: null },
+  });
+  if (claimed.count !== doseEventIds.length) {
+    throw new AppError("CONFLICT", "This reminder is already being handled.");
+  }
+
+  try {
+    return await prisma.reminderCall.create({ data: callData });
+  } catch (error) {
+    // A Worker interruption between claim and call-record creation must not
+    // strand doses. Reset only our still-calling claim; a settled event never
+    // gets reopened.
+    await prisma.doseEvent.updateMany({
+      where: { id: { in: doseEventIds }, patientId, status: "calling" },
+      data: { status: "scheduled", nextAttemptAtUtc: nextAttempt() },
+    });
+    throw error;
+  }
 }
 
 export function getAudioSet(call: ReminderCall): AudioSet {
@@ -300,6 +352,7 @@ export async function finalizeUnconfirmed(
   callId: string,
   outcome: "no_input" | "not_answered" | "failed" = "no_input",
 ): Promise<void> {
+  let queuedSmsDeliveryId: string | null = null;
   await prisma.$transaction(async (tx) => {
     const call = await tx.reminderCall.findUnique({ where: { id: callId } });
     if (!call || call.outcome !== null) return;
@@ -334,19 +387,25 @@ export async function finalizeUnconfirmed(
     }
 
     if (missed.length > 0) {
-      await createMissedAlert(tx, call.patientId, call.scheduledAtUtc, missed);
+      const patient = await tx.patient.findUnique({ where: { id: call.patientId } });
+      if (!patient) return;
+      await createMissedAlert(tx, patient, call.scheduledAtUtc, missed);
+      // The external Twilio request happens only after this transaction commits.
+      // A unique reminderCallId makes duplicate callback/sweeper finalization a
+      // no-op before an SMS can ever be dispatched twice.
+      queuedSmsDeliveryId = await queueSmsReminderFallback(tx, patient, call.id);
     }
   });
+
+  if (queuedSmsDeliveryId) await deliverQueuedSmsReminder(queuedSmsDeliveryId);
 }
 
 async function createMissedAlert(
   tx: Prisma.TransactionClient,
-  patientId: string,
+  patient: { id: string; name: string; timezone: string | null },
   scheduledAtUtc: Date,
   doseEventIds: string[],
 ) {
-  const patient = await tx.patient.findUnique({ where: { id: patientId } });
-  if (!patient) return;
   const tz = patient.timezone || config.defaultTz;
   const time = utcToLocalTime(scheduledAtUtc, tz);
   const enLbl = slotLabel(time, "en");
@@ -355,7 +414,7 @@ async function createMissedAlert(
 
   await tx.caregiverAlert.create({
     data: {
-      patientId,
+      patientId: patient.id,
       type: "missed_dose",
       doseEventIdsJson: JSON.stringify(doseEventIds),
       messageEn: `${patient.name} did not confirm the ${enLbl} medicines (${n} calls tried).`,
@@ -373,5 +432,32 @@ export async function sweepStuckCalls(): Promise<void> {
   for (const call of stuck) {
     logger.warn({ callId: call.id }, "sweeping stuck call");
     await finalizeUnconfirmed(call.id, "not_answered");
+  }
+  await releaseOrphanedCallClaims(cutoff);
+}
+
+/**
+ * A Worker could stop after the D1 compare-and-set claim but before persisting
+ * its ReminderCall. Return only those lease-expired events that do not belong
+ * to an open call; active ringing calls are left to `sweepStuckCalls` above.
+ */
+export async function releaseOrphanedCallClaims(cutoff: Date): Promise<void> {
+  const [openCalls, staleEvents] = await Promise.all([
+    prisma.reminderCall.findMany({ where: { outcome: null }, select: { doseEventIdsJson: true } }),
+    prisma.doseEvent.findMany({
+      where: { status: "calling", updatedAt: { lt: cutoff } },
+      select: { id: true },
+    }),
+  ]);
+  const callEventIds = new Set(openCalls.flatMap((call) => parseStringArray(call.doseEventIdsJson)));
+  const orphanedIds = staleEvents.map((event) => event.id).filter((id) => !callEventIds.has(id));
+  if (orphanedIds.length === 0) return;
+
+  const released = await prisma.doseEvent.updateMany({
+    where: { id: { in: orphanedIds }, status: "calling", updatedAt: { lt: cutoff } },
+    data: { status: "scheduled", nextAttemptAtUtc: nextAttempt() },
+  });
+  if (released.count > 0) {
+    logger.warn({ released: released.count }, "released orphaned reminder call claims");
   }
 }

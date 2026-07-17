@@ -20,6 +20,21 @@ export function getRuntimeValue(name: string): string | undefined {
 export const usesD1 = () => getRuntimeValue("DATABASE_DRIVER") === "d1";
 export const usesR2 = () => getRuntimeValue("STORAGE_DRIVER") === "r2";
 export const accessGateRequired = () => getRuntimeValue("REQUIRE_ACCESS_GATE") === "true";
+/** Auth mode is explicit. Never infer tenancy from a hostname or cookie. */
+export const usesSupabaseAuth = () => getRuntimeValue("AUTH_DRIVER") === "supabase";
+/**
+ * This remains false until the Supabase migration, RLS checks, and the full
+ * data adapter have passed. It prevents a signed-in Supabase user from ever
+ * falling through to the legacy global D1 household resolver.
+ */
+export const supabaseTenantRuntimeReady = () => getRuntimeValue("SUPABASE_TENANT_RUNTIME_READY") === "true";
+/**
+ * The legacy D1 reminder system is global-demo data, not Supabase tenant data.
+ * Once Supabase Auth is selected, no cron job or Twilio callback may touch
+ * the old tables. A future Supabase reminder/SMS adapter must remove these
+ * legacy call sites rather than making this helper return false.
+ */
+export const legacyTenantDataBlocked = () => usesSupabaseAuth();
 
 export function getD1Binding(): D1Database {
   const db = getCloudflareContext().env.DAWAISAATHI_DB;

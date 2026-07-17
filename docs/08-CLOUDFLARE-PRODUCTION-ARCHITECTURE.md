@@ -114,6 +114,7 @@ Never include `Authorization`, cookies, phone numbers, patient names, medicine n
 
 No real-data deployment until all gates pass:
 
+0. `AUTH_DRIVER=supabase` must never reach the legacy Prisma/D1 data layer. The middleware blocks user routes while `SUPABASE_TENANT_RUNTIME_READY=false`, `src/lib/tenant-cutover.ts` keeps explicit pending route lists even if the flag is flipped too early, `src/lib/db.ts` is a defense-in-depth kill switch for remaining Prisma access, and legacy cron/Twilio callbacks are disabled for every Supabase-auth deployment. Remove those guards only in the same reviewed change that replaces every health-data route, reminder worker, and webhook with the Supabase adapter.
 1. A user from household A receives a 404/403 for every household-B API route, photo, audio URL, reminder, and webhook-derived identifier.
 2. A duplicate queue message or Twilio webhook cannot create a second call or alter a settled dose state.
 3. A Worker restart during a call produces either one valid retry or a clear failed state—never a silent lost dose.

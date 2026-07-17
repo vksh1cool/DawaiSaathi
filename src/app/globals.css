@@ -9,15 +9,15 @@
   --color-text: #1c1917;
   --color-text-muted: #57534e;
   --color-border: #e7e5e4;
-  --color-danger: #dc2626;
+  --color-danger: #991b1b;
   --color-danger-soft: #fee2e2;
-  --color-warn: #d97706;
+  --color-warn: #92400e;
   --color-warn-soft: #fef3c7;
-  --color-info: #2563eb;
+  --color-info: #1d4ed8;
   --color-info-soft: #dbeafe;
-  --color-unverified: #7c3aed;
+  --color-unverified: #6d28d9;
   --color-unverified-soft: #ede9fe;
-  --color-success: #16a34a;
+  --color-success: #166534;
   --color-success-soft: #dcfce7;
 
   --radius-card: 16px;
@@ -108,6 +108,23 @@ button {
   animation: onboarding-enter 220ms var(--ease-out) both;
 }
 
+/* The home list is calm and sequential, never bouncy. It is especially
+   important that status cards do not jump while an older person is reading. */
+@keyframes dose-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dose-group-card {
+  animation: dose-card-enter 180ms var(--ease-out) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -122,6 +139,10 @@ button {
     animation: none !important;
   }
 
+  .dose-group-card {
+    animation: none !important;
+  }
+
   .pressable,
   .pressable:active {
     transition-duration: 0ms !important;
@@ -130,9 +151,9 @@ button {
 }
 
 .card-shadow {
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.06);
 }
 
 .modal-shadow {
-  box-shadow: 0 8px 30px rgb(0 0 0 / 0.18);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.06);
 }

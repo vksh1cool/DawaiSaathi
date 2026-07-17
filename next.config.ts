@@ -1,9 +1,6 @@
 import type { NextConfig } from "next";
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
-
-// Lets `next dev` use the same local D1/R2 bindings as the deployed Worker.
-// The call is intentionally not awaited; OpenNext owns its initialization.
-void initOpenNextCloudflareForDev();
 
 const nextConfig: NextConfig = {
   // OpenNext patches the generated Prisma client for workerd only when both
@@ -18,4 +15,12 @@ const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: false },
 };
 
-export default nextConfig;
+export default function config(phase: string): NextConfig {
+  if (phase === PHASE_DEVELOPMENT_SERVER) {
+    // Lets `next dev` use the same local D1/R2 bindings as the deployed Worker.
+    // The call is intentionally not awaited; OpenNext owns its initialization.
+    void initOpenNextCloudflareForDev();
+  }
+
+  return nextConfig;
+}

@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/db";
 import { parseStringArray } from "@/lib/db";
+import { AppError } from "@/lib/errors";
 import { buildReminderScripts, type ScriptMed, type ReminderScripts } from "@/lib/ivr/scripts";
 import { getHousehold } from "@/lib/household";
 import { ensureAudio } from "@/lib/tts";
 import type { Patient } from "@prisma/client";
-import type { FoodRelation, MedForm } from "@/types/domain";
+import type { FoodRelation } from "@/types/domain";
 import type { CallLanguage } from "@/lib/languages";
 
 /** Assemble a dose slot's medicines + reminder scripts (used by preview/calls/worker/sim). */
@@ -22,7 +23,9 @@ export async function getSlotMeds(patientId: string, time: string): Promise<Slot
   const foods = new Set<FoodRelation>();
   for (const s of schedules) {
     if (!parseStringArray(s.timesJson).includes(time)) continue;
-    meds.push({ brandName: s.medication.brandName, count: 1, form: s.medication.form as MedForm });
+    if (s.doseInstruction?.trim()) {
+      meds.push({ brandName: s.medication.brandName, doseInstruction: s.doseInstruction.trim() });
+    }
     foods.add(s.foodRelation as FoodRelation);
   }
   const foodRelation: FoodRelation = foods.size === 1 ? [...foods][0] : "any";
@@ -38,10 +41,17 @@ export async function getSlotMedsForEvents(doseEventIds: string[]): Promise<Slot
   const meds: ScriptMed[] = [];
   const foods = new Set<FoodRelation>();
   for (const e of events) {
-    meds.push({ brandName: e.medication.brandName, count: 1, form: e.medication.form as MedForm });
+    if (e.schedule?.doseInstruction?.trim()) {
+      meds.push({ brandName: e.medication.brandName, doseInstruction: e.schedule.doseInstruction.trim() });
+    }
     if (e.schedule) foods.add(e.schedule.foodRelation as FoodRelation);
   }
   const foodRelation: FoodRelation = foods.size === 1 ? [...foods][0] : "any";
+  if (meds.length !== events.length) {
+    // This is a defensive guard for event records created before the exact
+    // regimen migration. Call placement refuses rather than inventing a dose.
+    throw new AppError("VALIDATION", "This reminder needs its exact dose instruction before a call can be placed.");
+  }
   return { meds, foodRelation };
 }
 

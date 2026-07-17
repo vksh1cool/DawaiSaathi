@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
+import { usesSupabaseAuth } from "@/lib/cloudflare-runtime";
 import { prisma } from "@/lib/db";
 import { withErrorBoundary } from "@/lib/errors";
 import { getPatientOrThrow } from "@/lib/household";
+import { listSupabaseAlerts } from "@/lib/supabase/alerts";
 
 export const runtime = "nodejs";
 
 /** GET /api/alerts — unread first (Arch §7.6). */
 export const GET = withErrorBoundary(async () => {
+  if (usesSupabaseAuth()) {
+    return NextResponse.json({ alerts: await listSupabaseAlerts() });
+  }
+
   const patient = await getPatientOrThrow();
   const alerts = await prisma.caregiverAlert.findMany({
     where: { patientId: patient.id },

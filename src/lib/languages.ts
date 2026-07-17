@@ -1,17 +1,52 @@
 /**
- * One source of truth for reminder languages.  The app UI is currently
- * bilingual (English/Hindi), while reminder calls can use a broader set of
- * carefully authored spoken-language scripts.
+ * One source of truth for app and reminder languages. The app UI exposes only
+ * complete reviewed dictionaries, while reminder calls can use a broader set
+ * of carefully authored spoken-language scripts.
  *
  * `twilioLocale` is deliberately nullable: a language without a Twilio
  * <Say> locale must use generated audio for a live phone call rather than
  * silently being read in an unrelated language.
  */
-export const APP_LANGUAGE_CODES = ["en", "hi"] as const;
+export const APP_LANGUAGE_CODES = ["en", "hi", "es"] as const;
 export type AppLanguage = (typeof APP_LANGUAGE_CODES)[number];
+
+export type AppLanguageMeta = {
+  code: AppLanguage;
+  nativeName: string;
+  englishName: string;
+  shortLabel: string;
+  direction: "ltr" | "rtl";
+};
+
+export const APP_LANGUAGES: readonly AppLanguageMeta[] = [
+  {
+    code: "en",
+    nativeName: "English",
+    englishName: "English",
+    shortLabel: "EN",
+    direction: "ltr",
+  },
+  {
+    code: "hi",
+    nativeName: "हिन्दी",
+    englishName: "Hindi",
+    shortLabel: "हि",
+    direction: "ltr",
+  },
+  {
+    code: "es",
+    nativeName: "Español",
+    englishName: "Spanish",
+    shortLabel: "ES",
+    direction: "ltr",
+  },
+] as const;
 
 export const CALL_LANGUAGE_CODES = ["en", "hi", "bn", "ar", "fr", "pt", "af", "am", "sw", "ha", "yo", "es"] as const;
 export type CallLanguage = (typeof CALL_LANGUAGE_CODES)[number];
+/** Reviewed, low-information SMS templates currently exist only in these languages. */
+export const SMS_REMINDER_LANGUAGE_CODES = ["en", "hi"] as const;
+export type SmsReminderLanguage = (typeof SMS_REMINDER_LANGUAGE_CODES)[number];
 export type TwilioVoiceLocale = "en-IN" | "hi-IN" | "bn-IN" | "ar-XA" | "fr-FR" | "pt-PT" | "af-ZA" | "am-ET" | "es-US";
 
 export type CallLanguageMeta = {
@@ -138,13 +173,22 @@ export const CALL_LANGUAGES: readonly CallLanguageMeta[] = [
 ] as const;
 
 const byCode = new Map(CALL_LANGUAGES.map((language) => [language.code, language]));
+const appByCode = new Map(APP_LANGUAGES.map((language) => [language.code, language]));
 
 export function isAppLanguage(value: unknown): value is AppLanguage {
   return typeof value === "string" && (APP_LANGUAGE_CODES as readonly string[]).includes(value);
 }
 
+export function appLanguageMeta(language: AppLanguage): AppLanguageMeta {
+  return appByCode.get(language) ?? APP_LANGUAGES[0];
+}
+
 export function isCallLanguage(value: unknown): value is CallLanguage {
   return typeof value === "string" && (CALL_LANGUAGE_CODES as readonly string[]).includes(value);
+}
+
+export function isSmsReminderLanguage(value: unknown): value is SmsReminderLanguage {
+  return typeof value === "string" && (SMS_REMINDER_LANGUAGE_CODES as readonly string[]).includes(value);
 }
 
 export function callLanguageMeta(language: CallLanguage): CallLanguageMeta {

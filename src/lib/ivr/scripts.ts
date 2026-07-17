@@ -1,6 +1,6 @@
 import { slotLabel } from "@/lib/util/dates";
 import type { CallLanguage } from "@/lib/languages";
-import type { FoodRelation, MedForm } from "@/types/domain";
+import type { FoodRelation } from "@/types/domain";
 
 /**
  * Short, deliberately repetitive reminder scripts. They never describe why a
@@ -10,9 +10,8 @@ import type { FoodRelation, MedForm } from "@/types/domain";
 
 export type ScriptMed = {
   brandName: string;
-  count: number;
-  form: MedForm;
-  doseMl?: number | null;
+  /** Exact caregiver-verified text, in the language the patient will hear. */
+  doseInstruction: string;
 };
 
 export type ReminderScriptInput = {
@@ -24,51 +23,10 @@ export type ReminderScriptInput = {
   caregiverName?: string;
 };
 
-const HINDI_NUMS = ["शून्य", "एक", "दो", "तीन", "चार", "पाँच", "छह", "सात", "आठ", "नौ", "दस"];
-const BENGALI_NUMS = ["শূন্য", "এক", "দুই", "তিন", "চার", "পাঁচ", "ছয়", "সাত", "আট", "নয়", "দশ"];
-
-function spokenNumber(count: number, language: CallLanguage): string {
-  if (language === "hi") return HINDI_NUMS[count] ?? String(count);
-  if (language === "bn") return BENGALI_NUMS[count] ?? String(count);
-  return String(count);
-}
-
-function medLine(med: ScriptMed, language: CallLanguage): string {
-  const count = spokenNumber(med.count, language);
-  if (med.form === "syrup" || med.form === "drops") {
-    const ml = spokenNumber(med.doseMl ?? 5, language);
-    const liquid: Record<CallLanguage, string> = {
-      en: `${ml} ml of ${med.brandName}`,
-      hi: `${med.brandName} के ${ml} एम एल`,
-      bn: `${med.brandName} এর ${ml} মিলি`,
-      ar: `${ml} مل من ${med.brandName}`,
-      fr: `${ml} ml de ${med.brandName}`,
-      pt: `${ml} ml de ${med.brandName}`,
-      af: `${ml} ml ${med.brandName}`,
-      am: `${ml} ሚሊ ሊትር ${med.brandName}`,
-      sw: `${ml} ml ya ${med.brandName}`,
-      ha: `${ml} ml na ${med.brandName}`,
-      yo: `${ml} ml ti ${med.brandName}`,
-      es: `${ml} ml de ${med.brandName}`,
-    };
-    return liquid[language];
-  }
-
-  const tablets: Record<CallLanguage, string> = {
-    en: `${count} tablet${med.count === 1 ? "" : "s"} of ${med.brandName}`,
-    hi: `${med.brandName} की ${count} गोली`,
-    bn: `${med.brandName} এর ${count} ট্যাবলেট`,
-    ar: `${count} قرص من ${med.brandName}`,
-    fr: `${count} comprimé${med.count === 1 ? "" : "s"} de ${med.brandName}`,
-    pt: `${count} comprimido${med.count === 1 ? "" : "s"} de ${med.brandName}`,
-    af: `${count} tablet${med.count === 1 ? "" : "te"} ${med.brandName}`,
-    am: `${count} ጽላት ${med.brandName}`,
-    sw: `kidonge ${count} cha ${med.brandName}`,
-    ha: `ƙwaya ${count} ta ${med.brandName}`,
-    yo: `tabulẹti ${count} ti ${med.brandName}`,
-    es: `${count} tableta${med.count === 1 ? "" : "s"} de ${med.brandName}`,
-  };
-  return tablets[language];
+function medLine(med: ScriptMed): string {
+  // Do not interpret, translate, or normalize a medical instruction here.
+  // The phrase was explicitly reviewed in the selected call language.
+  return `${med.brandName}: ${med.doseInstruction.trim()}`;
 }
 
 const FOOD: Record<CallLanguage, Record<FoodRelation, string>> = {
@@ -265,7 +223,7 @@ function scriptsFor(
 }
 
 export function buildReminderScripts(input: ReminderScriptInput): ReminderScripts {
-  const medicineLines = joinMeds(input.meds.map((med) => medLine(med, input.language)), input.language);
+  const medicineLines = joinMeds(input.meds.map((med) => medLine(med)), input.language);
   return scriptsFor(
     input.language,
     input.patientName,

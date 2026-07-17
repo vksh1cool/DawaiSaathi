@@ -11,6 +11,9 @@ import { useTimedMessage } from "@/lib/use-timed-message";
 import { Toast } from "@/components/ui";
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { FeedbackLauncher } from "./FeedbackLauncher";
+import { AppLanguageSelect } from "./AppLanguageSelect";
+import type { AppLanguage } from "@/lib/languages";
 
 function LanguageToggle() {
   const { lang, setLang, t } = useI18n();
@@ -18,7 +21,7 @@ function LanguageToggle() {
   const [syncing, setSyncing] = useState(false);
   const { message, showMessage } = useTimedMessage();
 
-  const changeLanguage = async (next: "en" | "hi") => {
+  const changeLanguage = async (next: AppLanguage) => {
     if (next === lang || syncing) return;
     const previous = lang;
     setLang(next);
@@ -37,23 +40,14 @@ function LanguageToggle() {
   };
 
   return (
-    <div className="flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] p-0.5 text-sm">
-      {(["en", "hi"] as const).map((l) => (
-        <button
-          key={l}
-          type="button"
-          onClick={() => void changeLanguage(l)}
-          disabled={syncing}
-          className={`pressable min-h-[44px] rounded-full px-3 font-medium transition-[transform,background-color,color,opacity] duration-150 ease-[var(--ease-out)] disabled:cursor-not-allowed disabled:opacity-50 ${
-            lang === l
-              ? "bg-[var(--color-primary)] text-white"
-              : "text-[var(--color-text-muted)]"
-          }`}
-          aria-pressed={lang === l}
-        >
-          {l === "en" ? "EN" : "हि"}
-        </button>
-      ))}
+    <div className="relative">
+      <AppLanguageSelect
+        compact
+        value={lang}
+        disabled={syncing}
+        label={t("onboarding.appLanguage")}
+        onChange={(language) => void changeLanguage(language)}
+      />
       {message && <Toast tone="warn">{message}</Toast>}
     </div>
   );
@@ -86,7 +80,7 @@ export function AppShell({
         {t("common.skipToContent")}
       </a>
       {/* Header */}
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg)]/95 px-4 pb-2.5 pt-[calc(0.625rem_+_env(safe-area-inset-top))] backdrop-blur">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)]/70 px-4 pb-2.5 pt-[calc(0.625rem_+_env(safe-area-inset-top))] backdrop-blur-xl">
         <Link href="/" className="pressable flex min-h-[44px] items-center gap-2 rounded-[10px]">
           <Image src="/logo.png" alt="DawaiSaathi" width={32} height={32} className="rounded-md" />
           <span className="text-lg font-bold text-[var(--color-primary)]">{t("brand.name")}</span>
@@ -98,6 +92,7 @@ export function AppShell({
         </Link>
         <div className="flex items-center gap-2">
           <LanguageToggle />
+          <FeedbackLauncher />
           <Link
             href="/profile"
             aria-label={t("profile.title")}
@@ -112,7 +107,7 @@ export function AppShell({
       <main id="main-content" className="flex-1 px-4 pb-[calc(9rem_+_env(safe-area-inset-bottom))] pt-4">{children}</main>
 
       {/* Disclaimer (non-dismissible, above tab bar) — PRD §9.1 */}
-      <div className="fixed bottom-[calc(3.5rem_+_env(safe-area-inset-bottom))] left-1/2 z-10 w-full max-w-[480px] -translate-x-1/2 border-t border-[var(--color-border)] bg-[var(--color-bg)]/95 px-4 py-1.5 backdrop-blur">
+      <div className="fixed bottom-[calc(3.5rem_+_env(safe-area-inset-bottom))] left-1/2 z-10 w-full max-w-[480px] -translate-x-1/2 border-t border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-1.5">
         <p className="text-[11px] leading-tight text-[var(--color-text-muted)]">
           {t("legal.disclaimer")}
         </p>
@@ -121,7 +116,7 @@ export function AppShell({
       {/* Tab bar */}
       <nav
         aria-label={t("nav.primary")}
-        className="fixed bottom-0 left-1/2 z-20 flex h-[calc(3.5rem_+_env(safe-area-inset-bottom))] w-full max-w-[480px] -translate-x-1/2 border-t border-[var(--color-border)] bg-[var(--color-surface)] pb-[env(safe-area-inset-bottom)]"
+        className="fixed bottom-0 left-1/2 z-20 flex h-[calc(3.5rem_+_env(safe-area-inset-bottom))] w-full max-w-[480px] -translate-x-1/2 border-t border-[var(--color-border)] bg-[var(--color-surface)]/70 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl"
       >
         {TABS.map((tab) => {
           const active = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
@@ -133,7 +128,7 @@ export function AppShell({
               aria-current={active ? "page" : undefined}
               aria-label={tab.badge === "safety" && safetyBadge ? `${t(tab.key)} (${safetyBadge})` : undefined}
               className={`pressable relative flex flex-1 flex-col items-center justify-center gap-0.5 transition-[transform,color] duration-150 ease-[var(--ease-out)] ${
-                active ? "text-[var(--color-primary)]" : "text-[var(--color-text-muted)]"
+                active ? "text-[var(--color-primary)] bg-[var(--color-primary)]/10 rounded-full mx-2 my-1" : "text-[var(--color-text-muted)]"
               }`}
             >
               <Icon size={22} />

@@ -5,6 +5,15 @@ language a patient hears on a reminder call. This avoids pretending a partially
 translated safety screen is complete while still making the highest-value
 interaction — the reminder itself — available in more languages.
 
+## App interface languages
+
+The caregiver interface currently ships reviewed dictionaries for English,
+Hindi, and Spanish. Add another UI language only when every key in
+`src/lib/i18n/en.json` has a checked-in translation and the dictionary sync
+test passes. Draft machine translation is acceptable for a first pass, but
+medicine safety, consent, privacy, and error strings must be reviewed before
+the language is exposed.
+
 ## Launch reminder languages
 
 | Language | Locale | Primary reach | Phone fallback |
@@ -39,7 +48,16 @@ speaking a medicine instruction in a different language.
 4. Test the voice fallback with generated audio disabled. It must either use
    the configured Twilio locale or safely refuse the unsupported live call.
 
-## Adding another language
+## Translation workflow
+
+For broad draft coverage, prefer open multilingual translation models such as
+Meta's NLLB family (`facebook/nllb-200-distilled-600M`) because it targets
+200+ languages. OPUS-MT/Helsinki models are also useful for specific language
+pairs. Do not translate safety-critical UI at request time: generate drafts
+offline, review them, commit the JSON dictionary, and let tests prove it stays
+complete.
+
+## Adding another reminder language
 
 Add one entry in `src/lib/languages.ts`, then add its authored scripts and time
 labels in `src/lib/ivr/scripts.ts` and `src/lib/util/dates.ts`. TypeScript's
@@ -47,6 +65,5 @@ labels in `src/lib/ivr/scripts.ts` and `src/lib/util/dates.ts`. TypeScript's
 Add a test with the native review reference before exposing the language in the
 picker.
 
-The app interface remains English/Hindi until a complete, reviewed dictionary
-is available. Its reminder-language picker always uses each language's native
-name, so a caregiver can select the spoken language without needing English.
+The reminder-language picker always uses each language's native name, so a
+caregiver can select the spoken language without needing English.

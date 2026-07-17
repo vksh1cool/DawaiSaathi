@@ -11,10 +11,10 @@ import { useI18n } from "@/lib/i18n/provider";
 import { apiGet } from "@/lib/api-client";
 
 type Adherence = {
-  percent: number;
-  byDay: { date: string; confirmed: number; missed: number; pending: number }[];
+  confirmationRate: number | null;
+  byDay: { date: string; confirmed: number; notConfirmed: number; pending: number }[];
 };
-type CallFilter = "all" | "confirmed" | "missed";
+type CallFilter = "all" | "confirmed" | "not_confirmed";
 
 export default function HistoryPage() {
   const { t } = useI18n();
@@ -72,7 +72,7 @@ export default function HistoryPage() {
 
   const filteredCalls = calls.filter((c) => {
     if (filter === "confirmed") return c.outcome === "confirmed";
-    if (filter === "missed") return c.outcome === "not_answered" || c.outcome === "no_input" || c.outcome === "failed";
+    if (filter === "not_confirmed") return c.outcome === "not_answered" || c.outcome === "no_input" || c.outcome === "failed";
     return true;
   });
 
@@ -91,7 +91,7 @@ export default function HistoryPage() {
 
       {adherence && (
         <Card className="mb-6">
-          <AdherenceBar percent={adherence.percent} byDay={adherence.byDay} />
+          <AdherenceBar confirmationRate={adherence.confirmationRate} byDay={adherence.byDay} />
         </Card>
       )}
 
@@ -106,7 +106,7 @@ export default function HistoryPage() {
           >
             <option value="all">{t("history.filterAll")}</option>
             <option value="confirmed">{t("history.filterConfirmed")}</option>
-            <option value="missed">{t("history.filterMissed")}</option>
+            <option value="not_confirmed">{t("history.filterMissed")}</option>
           </select>
         </div>
       </div>

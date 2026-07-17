@@ -42,6 +42,16 @@
     }
   ],
 
+  // Transactional product feedback only. Before deployment, onboard
+  // launchpixel.in in Cloudflare Email Sending so feedback@launchpixel.in is
+  // a verified sender. The browser never receives email credentials.
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["feedback@launchpixel.in"]
+    }
+  ],
+
   // This Durable Object is owned by OpenNext and queues/de-duplicates ISR
   // revalidation. It contains cache coordination data, not health records.
   "durable_objects": {
@@ -65,8 +75,11 @@
     "GROQ_VISION_MODEL": "meta-llama/llama-4-scout-17b-16e-instruct",
     "DATABASE_DRIVER": "d1",
     "STORAGE_DRIVER": "r2",
+    // The Pages gateway is the only user-facing origin. Keeping this stable is
+    // essential for Twilio signature validation and callback URLs.
+    "PUBLIC_BASE_URL": "https://dawaisaathi.pages.dev",
     "NEXT_INC_CACHE_R2_PREFIX": "next-incremental-cache",
-    "REQUIRE_ACCESS_GATE": "true",
+    "REQUIRE_ACCESS_GATE": "false",
     "DEFAULT_TZ": "Asia/Kolkata",
     "DEMO_MODE": "false",
     "WORKER_TICK_SECONDS": "60",

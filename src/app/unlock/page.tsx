@@ -1,10 +1,11 @@
 import { UnlockForm } from "./UnlockForm";
+import { safeInternalPath } from "@/lib/safe-redirect";
 
 export const dynamic = "force-dynamic";
 
 export default async function UnlockPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const { next } = await searchParams;
-  const nextPath = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const nextPath = safeInternalPath(next);
   return (
     <main className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-teal-50 to-white px-5 py-10">
       <section className="w-full max-w-md rounded-3xl border border-teal-100 bg-white p-7 text-center shadow-xl shadow-teal-950/10 sm:p-9">

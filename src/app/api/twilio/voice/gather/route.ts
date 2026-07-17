@@ -1,5 +1,6 @@
 import { readWebhook, audioUrl, twilio, voiceLocale } from "@/lib/twilio";
 import { handleGatherResult, getAudioSet } from "@/lib/calls";
+import { legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
 import { config } from "@/lib/config";
 import type { CallLanguage, TwilioVoiceLocale } from "@/lib/languages";
 
@@ -10,9 +11,16 @@ export async function POST(req: Request) {
   const { params, valid } = await readWebhook(req);
   if (!valid) return new Response("invalid signature", { status: 403 });
 
+  const vr = new twilio.twiml.VoiceResponse();
+  // Return valid TwiML so Twilio does not retry, but never let a Supabase
+  // rollout callback mutate the legacy global D1 reminder record.
+  if (legacyTenantDataBlocked()) {
+    vr.hangup();
+    return xml(vr);
+  }
+
   const callId = new URL(req.url).searchParams.get("callId")!;
   const digits = params.Digits ?? "";
-  const vr = new twilio.twiml.VoiceResponse();
 
   const result = await handleGatherResult(callId, digits);
   if (!result) {

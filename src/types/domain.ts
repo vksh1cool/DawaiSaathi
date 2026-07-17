@@ -105,12 +105,14 @@ export type ScheduleSuggestion = {
   lowConfidence: boolean;
 };
 
+// `missed` is retained as the persisted legacy state, but means only that the
+// reminder was not confirmed after retries—not that the person did not take it.
 export type DoseStatus = "scheduled" | "calling" | "confirmed" | "missed" | "skipped";
 
 export type TodayGroup = {
   time: string; // "HH:mm" patient-local
   scheduledAtUtc: string;
-  status: "upcoming" | "confirmed" | "missed" | "mixed";
+  status: "upcoming" | "confirmed" | "not_confirmed" | "mixed";
   foodRelation: FoodRelation;
   meds: {
     medicationId: string;

@@ -39,7 +39,7 @@ export default function ScanPage() {
     <AppShell>
       <h1 className="mb-1 text-2xl font-bold">{t("scan.title")}</h1>
       {!busy && (
-        <p className="mb-4 text-sm text-[var(--color-text-muted)]">{t("scan.tips")}</p>
+        <p className="mb-4 text-sm leading-6 text-[var(--color-text-muted)]">{t("scan.tips")}</p>
       )}
 
       {busy ? (

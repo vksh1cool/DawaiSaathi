@@ -10,8 +10,6 @@ const ACCEPTED_IMAGE_TYPES = new Set([
   "image/png",
   "image/x-png",
   "image/webp",
-  "image/heic",
-  "image/heif",
 ]);
 
 export function PhotoDropzone({
@@ -131,7 +129,7 @@ export function PhotoDropzone({
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+        accept="image/jpeg,image/png,image/webp"
         capture="environment"
         multiple
         className="hidden"
@@ -141,7 +139,7 @@ export function PhotoDropzone({
         }}
       />
       <p id="photo-helper" className="mt-2 text-xs text-[var(--color-text-muted)]">
-        {t("scan.photoLimit", { max })}
+        {t("scan.photoFormats", { max })}
       </p>
       {message && (
         <p className="mt-1 text-sm font-medium text-[var(--color-warn)]" role="alert">

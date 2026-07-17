@@ -84,11 +84,11 @@ export async function seedDemoHousehold() {
   const today = DateTime.now().setZone(patient.timezone).toFormat("yyyy-MM-dd");
 
   await saveSchedules(patient.id, patient.timezone, [
-    scheduleFor(byBrand, "Telma 40", ["08:00"], "after_food", today),
-    scheduleFor(byBrand, "Amlong 5", ["08:00"], "after_food", today),
-    scheduleFor(byBrand, "Glycomet 500", ["08:00", "20:00"], "after_food", today),
-    scheduleFor(byBrand, "Ecosprin 75", ["08:00"], "after_food", today),
-    scheduleFor(byBrand, "Warf 5", ["20:00"], "any", today),
+    scheduleFor(byBrand, "Telma 40", ["08:00"], "एक गोली", "after_food", today),
+    scheduleFor(byBrand, "Amlong 5", ["08:00"], "एक गोली", "after_food", today),
+    scheduleFor(byBrand, "Glycomet 500", ["08:00", "20:00"], "एक गोली", "after_food", today),
+    scheduleFor(byBrand, "Ecosprin 75", ["08:00"], "एक गोली", "after_food", today),
+    scheduleFor(byBrand, "Warf 5", ["20:00"], "एक गोली", "any", today),
   ]);
 
   // Both routines write to SQLite. Keep them sequential so a demo reset never
@@ -119,12 +119,13 @@ function scheduleFor(
   byBrand: Map<string, { id: string }>,
   brandName: string,
   times: string[],
+  doseInstruction: string,
   foodRelation: "before_food" | "after_food" | "with_food" | "any",
   startDate: string,
 ) {
   const medication = byBrand.get(brandName);
   if (!medication) throw new Error(`Demo medicine missing: ${brandName}`);
-  return { medicationId: medication.id, times, foodRelation, startDate };
+  return { medicationId: medication.id, times, doseInstruction, foodRelation, startDate };
 }
 
 async function prewarmDemoAudio(patientId: string, language: CallLanguage, voiceGender: string) {

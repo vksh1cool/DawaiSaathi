@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Camera, ChevronRight, IndianRupee } from "lucide-react";
+import { AlertTriangle, BellRing, Camera, ChevronRight, IndianRupee } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { DoseGroupCard } from "@/components/DoseGroupCard";
 import { AdherenceBar } from "@/components/AdherenceBar";
@@ -17,11 +17,19 @@ import { useTimedMessage } from "@/lib/use-timed-message";
 import type { TodayGroup, Finding } from "@/types/domain";
 
 type Today = { groups: TodayGroup[] };
-type Adherence = { percent: number; byDay: { date: string; confirmed: number; missed: number; pending: number }[] };
+type Adherence = { confirmationRate: number | null; byDay: { date: string; confirmed: number; notConfirmed: number; pending: number }[] };
+type CaregiverAlert = {
+  id: string;
+  type: string;
+  messageEn: string;
+  messageHi: string;
+  read: boolean;
+  createdAt: string;
+};
 
 export default function HomePage() {
   const { t, lang } = useI18n();
-  const { info } = useAppInfo();
+  const { info, unavailable, refresh } = useAppInfo();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -32,41 +40,58 @@ export default function HomePage() {
   const [savings, setSavings] = useState<number | null>(null);
   const [patientName, setPatientName] = useState("");
   const [openFindings, setOpenFindings] = useState(0);
+  const [alerts, setAlerts] = useState<CaregiverAlert[]>([]);
   const [simTime, setSimTime] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { message, showMessage } = useTimedMessage();
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoadError(null);
       const [meds, todayRes, hh] = await Promise.all([
-        apiGet<{ medications: unknown[] }>("/api/medications"),
-        apiGet<Today>("/api/today"),
-        apiGet<{ household: { patient: { name: string } | null } }>("/api/household"),
+        apiGet<{ medications: unknown[] }>("/api/medications", { signal }),
+        apiGet<Today>("/api/today", { signal }),
+        apiGet<{ household: { patient: { name: string } | null } }>("/api/household", { signal }),
       ]);
+      if (signal?.aborted) return;
       setHasMeds(meds.medications.length > 0);
       setToday(todayRes);
       setPatientName(hh.household.patient?.name ?? "");
 
       // These enrich the dashboard but should never turn a usable medicine
       // list into a blank error screen when one auxiliary endpoint is down.
-      const [adh, inter, gen] = await Promise.allSettled([
-        apiGet<Adherence>("/api/adherence?days=7"),
-        apiGet<{ open: Finding[] }>("/api/interactions"),
-        apiGet<{ totalMonthlySavingsInr: number }>("/api/generics"),
+      const [adh, inter, gen, alertResult] = await Promise.allSettled([
+        apiGet<Adherence>("/api/adherence?days=7", { signal }),
+        apiGet<{ open: Finding[] }>("/api/interactions", { signal }),
+        apiGet<{ totalMonthlySavingsInr: number }>("/api/generics", { signal }),
+        apiGet<{ alerts: CaregiverAlert[] }>("/api/alerts", { signal }),
       ]);
+      if (signal?.aborted) return;
+
       setAdherence(adh.status === "fulfilled" ? adh.value : null);
       if (inter.status === "fulfilled") {
         setTopFinding(inter.value.open[0] ?? null);
         setOpenFindings(inter.value.open.length);
       }
       setSavings(gen.status === "fulfilled" ? gen.value.totalMonthlySavingsInr : null);
-    } catch {
+      setAlerts(alertResult.status === "fulfilled" ? alertResult.value.alerts : []);
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setLoadError(t("home.loadError"));
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [t]);
+
+  const loadTodayStatus = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const todayRes = await apiGet<Today>("/api/today", { signal });
+      if (signal?.aborted) return;
+      setToday(todayRes);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') console.error(err);
+    }
+  }, []);
 
   useEffect(() => {
     if (!info) return;
@@ -74,16 +99,28 @@ export default function HomePage() {
       router.replace("/onboarding");
       return;
     }
-    void load();
+    const abort = new AbortController();
+    void load(abort.signal);
+    return () => abort.abort();
   }, [info, load, router]);
 
   // Poll while any dose is still upcoming/calling (captures the live "confirmed" flip).
   useEffect(() => {
     const live = today.groups.some((g) => g.status === "upcoming");
     if (!live) return;
-    const id = setInterval(load, 5000);
-    return () => clearInterval(id);
-  }, [today, load]);
+
+    let pollAbort: AbortController | null = null;
+    const poll = async () => {
+      pollAbort = new AbortController();
+      await loadTodayStatus(pollAbort.signal);
+    };
+
+    const id = setInterval(poll, 5000);
+    return () => {
+      clearInterval(id);
+      pollAbort?.abort();
+    };
+  }, [today, loadTodayStatus]);
 
   const callNow = async (time: string) => {
     try {
@@ -107,7 +144,29 @@ export default function HomePage() {
     }
   };
 
-  if (loading) {
+  const markAlertRead = async (alertId: string) => {
+    try {
+      await apiJson(`/api/alerts/${encodeURIComponent(alertId)}/read`, "POST");
+      setAlerts((current) => current.map((alert) => (alert.id === alertId ? { ...alert, read: true } : alert)));
+    } catch {
+      showMessage(t("home.alertReadError"));
+    }
+  };
+
+  if (!info && unavailable) {
+    return (
+      <AppShell safetyBadge={openFindings}>
+        <Card tone="warn">
+          <p className="text-sm">{t("home.bootstrapUnavailable")}</p>
+          <PrimaryButton className="mt-3" onClick={() => void refresh()}>
+            {t("common.tryAgain")}
+          </PrimaryButton>
+        </Card>
+      </AppShell>
+    );
+  }
+
+  if (!info || loading) {
     return (
       <AppShell safetyBadge={openFindings}>
         <Spinner label={t("common.loading")} />
@@ -120,7 +179,7 @@ export default function HomePage() {
       <AppShell safetyBadge={openFindings}>
         <Card tone="warn">
           <p className="text-sm">{loadError}</p>
-          <PrimaryButton className="mt-3" onClick={load}>
+          <PrimaryButton className="mt-3" onClick={() => void load()}>
             {t("common.tryAgain")}
           </PrimaryButton>
         </Card>
@@ -144,6 +203,9 @@ export default function HomePage() {
     );
   }
 
+  const unreadAlerts = alerts.filter((alert) => !alert.read);
+  const latestAlert = unreadAlerts[0];
+
   return (
     <AppShell safetyBadge={openFindings}>
       {/* Top interaction alert */}
@@ -164,6 +226,37 @@ export default function HomePage() {
         </Link>
       )}
 
+      {latestAlert && (
+        <div className="mb-3" aria-live="polite">
+          <Card tone="warn">
+            <div className="flex items-start gap-3">
+            <BellRing size={21} className="mt-0.5 shrink-0 text-[var(--color-warn)]" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{t("home.followUpTitle")}</p>
+              <p className="mt-1 text-sm leading-5 text-[var(--color-text)]">
+                {lang === "hi" ? latestAlert.messageHi : latestAlert.messageEn}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void markAlertRead(latestAlert.id)}
+                  className="pressable min-h-[44px] rounded-[10px] bg-[var(--color-surface)] px-3 text-sm font-semibold text-[var(--color-primary)] transition-[transform,background-color] duration-150 ease-[var(--ease-out)]"
+                >
+                  {t("home.markAlertRead")}
+                </button>
+                <Link
+                  href="/history"
+                  className="pressable flex min-h-[44px] items-center rounded-[10px] px-2 text-sm font-semibold text-[var(--color-primary)]"
+                >
+                  {unreadAlerts.length > 1 ? t("home.followUpMore", { n: unreadAlerts.length }) : t("home.history")}
+                </Link>
+              </div>
+            </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
       <div className="mb-2 flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t("home.today")}</h1>
         <Link href="/history" className="pressable -mr-2 flex min-h-[44px] items-center rounded-[10px] px-2 text-sm font-medium text-[var(--color-primary)]">
@@ -180,16 +273,17 @@ export default function HomePage() {
             </Link>
           </Card>
         ) : (
-          today.groups.map((g) => (
-            <DoseGroupCard
-              key={g.time}
-              group={g}
-              patientName={patientName}
-              demoMode={info?.demoMode ?? false}
-              onCallNow={callNow}
-              onSimulate={(time) => setSimTime(time)}
-              onMark={markGroup}
-            />
+          today.groups.map((g, index) => (
+            <div key={g.time} className="dose-group-card" style={{ animationDelay: `${index * 60}ms` }}>
+              <DoseGroupCard
+                group={g}
+                patientName={patientName}
+                demoMode={info?.demoMode ?? false}
+                onCallNow={callNow}
+                onSimulate={(time) => setSimTime(time)}
+                onMark={markGroup}
+              />
+            </div>
           ))
         )}
       </div>
@@ -197,7 +291,7 @@ export default function HomePage() {
       {adherence && (
         <div className="mt-5">
           <Link href="/history">
-            <AdherenceBar percent={adherence.percent} byDay={adherence.byDay} />
+            <AdherenceBar confirmationRate={adherence.confirmationRate} byDay={adherence.byDay} />
           </Link>
         </div>
       )}

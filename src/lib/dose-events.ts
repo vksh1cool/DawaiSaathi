@@ -22,7 +22,7 @@ function groupStatus(events: EventWithMed[]): TodayGroup["status"] {
   const statuses = events.map((e) => e.status as DoseStatus);
   if (statuses.every((s) => s === "confirmed")) return "confirmed";
   if (statuses.some((s) => s === "scheduled" || s === "calling")) return "upcoming";
-  if (statuses.some((s) => s === "missed")) return "missed";
+  if (statuses.some((s) => s === "missed")) return "not_confirmed";
   return "mixed";
 }
 
@@ -204,11 +204,11 @@ export async function getAdherence(patient: Patient, days: number) {
   });
 
   let confirmed = 0;
-  let missed = 0;
-  const byDayMap = new Map<string, { confirmed: number; missed: number; pending: number }>();
+  let notConfirmed = 0;
+  const byDayMap = new Map<string, { confirmed: number; notConfirmed: number; pending: number }>();
   for (let i = 0; i < days; i++) {
     const d = start.plus({ days: i }).toFormat("yyyy-MM-dd");
-    byDayMap.set(d, { confirmed: 0, missed: 0, pending: 0 });
+    byDayMap.set(d, { confirmed: 0, notConfirmed: 0, pending: 0 });
   }
 
   for (const e of events) {
@@ -219,19 +219,19 @@ export async function getAdherence(patient: Patient, days: number) {
       confirmed += 1;
       bucket.confirmed += 1;
     } else if (e.status === "missed") {
-      missed += 1;
-      bucket.missed += 1;
+      notConfirmed += 1;
+      bucket.notConfirmed += 1;
     } else if (e.status === "scheduled" || e.status === "calling") {
       bucket.pending += 1;
     }
   }
 
-  const denom = confirmed + missed;
-  const percent = denom === 0 ? 100 : Math.round((confirmed / denom) * 100);
+  const denom = confirmed + notConfirmed;
+  const confirmationRate = denom === 0 ? null : Math.round((confirmed / denom) * 100);
   return {
-    percent,
+    confirmationRate,
     confirmed,
-    missed,
+    notConfirmed,
     byDay: Array.from(byDayMap.entries()).map(([date, v]) => ({ date, ...v })),
   };
 }

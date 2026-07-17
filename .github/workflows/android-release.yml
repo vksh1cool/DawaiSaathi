@@ -1,0 +1,108 @@
+name: Android release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, for example v1.0.0"
+        required: true
+        type: string
+      publish:
+        description: "Publish a GitHub Release after a successful signed build"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build signed Android release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+      ANDROID_APP_CERT_SHA256: ${{ vars.ANDROID_APP_CERT_SHA256 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build platform
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Validate release version and TWA configuration
+        run: |
+          npm run android:version -- "$RELEASE_VERSION"
+          npm run android:check
+          npm run android:sync
+
+      - name: Restore release signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/dawaisaathi-release.keystore"
+          test -s "$RUNNER_TEMP/dawaisaathi-release.keystore"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/dawaisaathi-release.keystore" >> "$GITHUB_ENV"
+
+      - name: Verify production Android trust relationship
+        run: npm run android:verify-links
+
+      - name: Build signed APK and App Bundle
+        working-directory: android
+        run: ./gradlew --no-daemon --stacktrace assembleRelease bundleRelease
+
+      - name: Create checksums
+        run: |
+          cd android/app/build/outputs
+          sha256sum apk/release/*.apk bundle/release/*.aab > SHA256SUMS.txt
+
+      - name: Upload Android build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DawaiSaathi-${{ env.RELEASE_VERSION }}-android
+          if-no-files-found: error
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/bundle/release/*.aab
+            android/app/build/outputs/SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_VERSION" \
+            android/app/build/outputs/apk/release/*.apk \
+            android/app/build/outputs/bundle/release/*.aab \
+            android/app/build/outputs/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "DawaiSaathi $RELEASE_VERSION" \
+            --generate-notes

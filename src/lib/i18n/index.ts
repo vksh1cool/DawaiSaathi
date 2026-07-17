@@ -1,14 +1,15 @@
 import en from "./en.json";
+import es from "./es.json";
 import hi from "./hi.json";
-import { APP_LANGUAGE_CODES, type AppLanguage } from "@/lib/languages";
+import { APP_LANGUAGES, APP_LANGUAGE_CODES, type AppLanguage } from "@/lib/languages";
 
-export const dictionaries = { en, hi } as const;
+export const dictionaries = { en, hi, es } as const;
 export type Dictionary = typeof en;
 
-export const LANGUAGES: { code: AppLanguage; label: string }[] = [
-  { code: "en", label: "English" },
-  { code: "hi", label: "हिन्दी" },
-];
+export const LANGUAGES: { code: AppLanguage; label: string }[] = APP_LANGUAGES.map((language) => ({
+  code: language.code,
+  label: language.nativeName,
+}));
 
 /** Resolve a dotted key path against a dictionary. */
 function resolve(dict: unknown, key: string): string | undefined {

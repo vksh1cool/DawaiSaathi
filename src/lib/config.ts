@@ -51,7 +51,14 @@ const schema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),
+  // Preferred for SMS: Twilio Messaging Service handles sender pools and
+  // regional compliance. A verified SMS-capable From number also works for a
+  // small cohort.
+  TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
   PUBLIC_BASE_URL: z.string().optional(),
+  // This is a public signing certificate fingerprint, but storing it as a
+  // Worker secret keeps one deployment path for all Android release inputs.
+  ANDROID_APP_CERT_SHA256: z.string().trim().optional(),
   REMINDER_CRON_TOKEN: z.string().trim().optional(),
 
   // D1/R2 is the isolated Cloudflare preview runtime. The production migration
@@ -59,6 +66,17 @@ const schema = z.object({
   // development intentionally defaults to SQLite plus ./storage.
   DATABASE_DRIVER: z.enum(["sqlite", "d1"]).default("sqlite"),
   STORAGE_DRIVER: z.enum(["local", "r2"]).default("local"),
+  // Keep Supabase Auth opt-in until the tenant schema, RLS policies, and
+  // project credentials have been applied. The legacy access gate remains
+  // the default so a partial configuration cannot lock users out.
+  AUTH_DRIVER: z.enum(["access_gate", "supabase"]).default("access_gate"),
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_ANON_KEY: z.string().trim().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().trim().optional(),
+  // Authentication and the tenant data adapter have separate rollout gates.
+  // This must remain false until the migration/RLS test suite and every
+  // patient-data route are on the Supabase path.
+  SUPABASE_TENANT_RUNTIME_READY: bool(false),
   REQUIRE_ACCESS_GATE: bool(false),
 
   DATABASE_URL: z.string().default("file:./dev.db"),
@@ -90,6 +108,8 @@ const isConfiguredSecret = (value: string | undefined) =>
 const openAiConfigured = isConfiguredSecret(env.OPENAI_API_KEY);
 const nimConfigured = isConfiguredSecret(env.NIM_API_KEY);
 const groqConfigured = isConfiguredSecret(env.GROQ_API_KEY);
+const supabaseUrlConfigured = isConfiguredSecret(env.SUPABASE_URL);
+const supabaseAnonConfigured = isConfiguredSecret(env.SUPABASE_ANON_KEY);
 const configIssues: string[] = [];
 if (env.AI_PROVIDER === "openai" && !openAiConfigured) {
   configIssues.push("OPENAI_API_KEY is required when AI_PROVIDER=openai");
@@ -102,6 +122,9 @@ if (env.AI_PROVIDER === "nim" && !env.NIM_MODEL) {
 }
 if (env.AI_PROVIDER === "groq" && !groqConfigured) {
   configIssues.push("GROQ_API_KEY is required when AI_PROVIDER=groq");
+}
+if (env.AUTH_DRIVER === "supabase" && (!supabaseUrlConfigured || !supabaseAnonConfigured)) {
+  configIssues.push("SUPABASE_URL and SUPABASE_ANON_KEY are required when AUTH_DRIVER=supabase");
 }
 if (configIssues.length > 0) {
   throw new Error(`Invalid environment configuration:\n${configIssues.map((issue) => `  - ${issue}`).join("\n")}`);
@@ -126,6 +149,12 @@ const twilioReady =
   isConfiguredSecret(env.TWILIO_ACCOUNT_SID) &&
   isConfiguredSecret(env.TWILIO_AUTH_TOKEN) &&
   isConfiguredSecret(env.TWILIO_FROM_NUMBER) &&
+  !!env.PUBLIC_BASE_URL &&
+  !env.PUBLIC_BASE_URL.includes("replace");
+const smsReady =
+  isConfiguredSecret(env.TWILIO_ACCOUNT_SID) &&
+  isConfiguredSecret(env.TWILIO_AUTH_TOKEN) &&
+  (isConfiguredSecret(env.TWILIO_MESSAGING_SERVICE_SID) || isConfiguredSecret(env.TWILIO_FROM_NUMBER)) &&
   !!env.PUBLIC_BASE_URL &&
   !env.PUBLIC_BASE_URL.includes("replace");
 
@@ -155,13 +184,23 @@ export const config = {
   twilioAccountSid: env.TWILIO_ACCOUNT_SID,
   twilioAuthToken: env.TWILIO_AUTH_TOKEN,
   twilioFromNumber: env.TWILIO_FROM_NUMBER,
+  twilioMessagingServiceSid: env.TWILIO_MESSAGING_SERVICE_SID,
   publicBaseUrl: env.PUBLIC_BASE_URL?.replace(/\/$/, ""),
   telephonyEnabled: twilioReady,
+  smsEnabled: smsReady,
+  androidAppCertSha256: env.ANDROID_APP_CERT_SHA256,
   reminderCronToken: env.REMINDER_CRON_TOKEN,
 
   databaseUrl: env.DATABASE_URL,
   databaseDriver: env.DATABASE_DRIVER,
   storageDriver: env.STORAGE_DRIVER,
+  authDriver: env.AUTH_DRIVER,
+  supabaseUrl: env.SUPABASE_URL,
+  supabaseAnonKey: env.SUPABASE_ANON_KEY,
+  // Server-only. It is intentionally never exposed through a NEXT_PUBLIC_
+  // variable and normal household requests must continue to use RLS.
+  supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
+  supabaseTenantRuntimeReady: env.SUPABASE_TENANT_RUNTIME_READY,
   requireAccessGate: env.REQUIRE_ACCESS_GATE,
   openfdaApiKey: env.OPENFDA_API_KEY,
 

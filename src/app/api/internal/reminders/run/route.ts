@@ -6,6 +6,7 @@ import { logger } from "@/lib/logger";
 import { processDueReminders } from "@/lib/reminder-dispatch";
 import { materializeDoseEvents } from "@/lib/schedule";
 import { secretsMatch } from "@/lib/secret";
+import { legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,13 @@ export const POST = withErrorBoundary(async (req: Request) => {
     config.reminderCronToken,
   );
   if (!authorized) throw new AppError("UNAUTHORIZED", "Unauthorized.");
+  if (legacyTenantDataBlocked()) {
+    logger.warn("legacy D1 reminder dispatch blocked while Supabase tenant runtime is pending");
+    return NextResponse.json(
+      { ok: false, code: "TENANT_RUNTIME_PENDING" },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
   const started = Date.now();
   const materialized = await materializeDoseEvents();

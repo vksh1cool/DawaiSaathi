@@ -38,6 +38,7 @@ export default function ReviewPage() {
   const [meds, setMeds] = useState<DraftMedication[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reviewedAgainstPrescription, setReviewedAgainstPrescription] = useState(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("dawaisaathi.scan");
@@ -62,6 +63,11 @@ export default function ReviewPage() {
     setSaving(true);
     setError(null);
     try {
+      if (!reviewedAgainstPrescription) {
+        setError(t("review.prescriptionConfirmationRequired"));
+        setSaving(false);
+        return;
+      }
       // Normalize salts (strip empties) and persist.
       const cleaned = meds.map((m) => {
         const salts = m.salts.filter((salt) => salt.inn.trim() !== "");
@@ -79,6 +85,7 @@ export default function ReviewPage() {
       await apiJson("/api/medications", "POST", {
         scanBatchId: scan?.scanBatchId,
         medications: cleaned,
+        reviewedAgainstPrescription: true,
       });
       sessionStorage.removeItem("dawaisaathi.scan");
 
@@ -118,6 +125,10 @@ export default function ReviewPage() {
         </div>
       )}
 
+      <div className="mb-4">
+        <Banner tone="info">{t("review.packCheckNotice")}</Banner>
+      </div>
+
       <div className="flex flex-col gap-3">
         {meds.map((m) => (
           <MedReviewCard
@@ -134,9 +145,22 @@ export default function ReviewPage() {
           <Plus size={16} /> {t("review.addManual")}
         </GhostButton>
 
+        <label className="flex min-h-[56px] cursor-pointer items-start gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm leading-5 text-[var(--color-text)]">
+          <input
+            type="checkbox"
+            checked={reviewedAgainstPrescription}
+            onChange={(event) => {
+              setReviewedAgainstPrescription(event.target.checked);
+              if (event.target.checked) setError(null);
+            }}
+            className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+          />
+          <span>{t("review.prescriptionConfirmation")}</span>
+        </label>
+
         {error && <Banner tone="danger">{error}</Banner>}
 
-        <PrimaryButton disabled={saving || meds.length === 0} onClick={confirm}>
+        <PrimaryButton disabled={saving || meds.length === 0 || !reviewedAgainstPrescription} onClick={confirm}>
           {saving ? (
             t("common.loading")
           ) : (

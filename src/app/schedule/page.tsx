@@ -14,6 +14,13 @@ import type { ScheduleSuggestion } from "@/types/domain";
 import { speechLocale, type CallLanguage } from "@/lib/languages";
 import { DateTime } from "luxon";
 
+type ActiveSchedule = {
+  medicationId: string;
+  times: string[];
+  doseInstruction: string | null;
+  foodRelation: ScheduleDraft["foodRelation"];
+};
+
 export default function SchedulePage() {
   const { t } = useI18n();
   const router = useRouter();
@@ -27,6 +34,7 @@ export default function SchedulePage() {
   const [previewing, setPreviewing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [patientLanguage, setPatientLanguage] = useState<CallLanguage>("hi");
+  const [reviewedAgainstInstructions, setReviewedAgainstInstructions] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const previewRequestRef = useRef(0);
 
@@ -34,28 +42,34 @@ export default function SchedulePage() {
     setLoadError(null);
     setDrafts(null);
     (async () => {
-      const [medsRes, sugRes, hh] = await Promise.all([
+      const [medsRes, sugRes, activeRes, hh] = await Promise.all([
         apiGet<{ medications: SerializedMedication[] }>("/api/medications"),
         apiGet<{ suggestions: ScheduleSuggestion[] }>("/api/schedules/suggest").catch(() => ({
           suggestions: [] as ScheduleSuggestion[],
         })),
+        apiGet<{ schedules: ActiveSchedule[] }>("/api/schedules"),
         apiGet<{ household: { patient: { name: string; timezone: string; language: CallLanguage } | null } }>("/api/household"),
       ]);
       setPatientName(hh.household.patient?.name ?? "");
       setPatientTimezone(hh.household.patient?.timezone ?? "Asia/Kolkata");
       setPatientLanguage(hh.household.patient?.language ?? "hi");
       const sugMap = new Map(sugRes.suggestions.map((s) => [s.medicationId, s]));
+      const activeMap = new Map(activeRes.schedules.map((schedule) => [schedule.medicationId, schedule]));
       setDrafts(
         medsRes.medications.map((m) => {
           const sug = sugMap.get(m.id);
+          const active = activeMap.get(m.id);
           return {
             medicationId: m.id,
             brandName: m.brandName,
             displayGeneric: m.displayGeneric,
             highRisk: m.highRisk,
-            times: sug?.times ?? ["08:00"],
-            foodRelation: sug?.foodRelation ?? "any",
-            lowConfidence: sug?.lowConfidence ?? true,
+            // Never overwrite a caregiver's saved choices with a fresh AI
+            // suggestion when they revisit this screen.
+            times: active?.times ?? sug?.times ?? ["08:00"],
+            doseInstruction: active?.doseInstruction ?? "",
+            foodRelation: active?.foodRelation ?? sug?.foodRelation ?? "any",
+            lowConfidence: active ? false : (sug?.lowConfidence ?? true),
             // carry specialCheck via a side map below
             ...(m.specialCheck === "weekly_check" ? { _mtx: true } : {}),
           } as ScheduleDraft & { _mtx?: boolean };
@@ -110,6 +124,10 @@ export default function SchedulePage() {
 
   const previewCall = async () => {
     if (!drafts) return;
+    if (drafts.some((draft) => draft.times.length > 0 && !draft.doseInstruction.trim())) {
+      setError(t("schedule.doseInstructionRequired"));
+      return;
+    }
     const evening = drafts.find((d) => d.times.includes("20:00")) ? "20:00" : drafts[0]?.times[0];
     if (!evening) return;
     const selected = drafts.filter((draft) => draft.times.includes(evening));
@@ -121,7 +139,11 @@ export default function SchedulePage() {
     try {
       const res = await apiJson<{ audioUrl: string | null; scriptText: string }>("/api/tts/preview", "POST", {
         time: evening,
-        schedules: selected.map((draft) => ({ medicationId: draft.medicationId, foodRelation: draft.foodRelation })),
+        schedules: selected.map((draft) => ({
+          medicationId: draft.medicationId,
+          doseInstruction: draft.doseInstruction,
+          foodRelation: draft.foodRelation,
+        })),
       });
       if (requestId !== previewRequestRef.current) return;
       if (!res.audioUrl) {
@@ -159,10 +181,12 @@ export default function SchedulePage() {
         schedules: list.map((d) => ({
           medicationId: d.medicationId,
           times: d.times,
+          doseInstruction: d.doseInstruction,
           foodRelation: d.foodRelation,
           startDate: today,
         })),
         weeklyOverridePatientName,
+        reviewedAgainstInstructions: true,
       });
       router.push("/");
     } catch (e) {
@@ -191,6 +215,14 @@ export default function SchedulePage() {
 
   const start = () => {
     if (!drafts) return;
+    if (!reviewedAgainstInstructions) {
+      setError(t("schedule.instructionsConfirmationRequired"));
+      return;
+    }
+    if (drafts.some((draft) => draft.times.length > 0 && !draft.doseInstruction.trim())) {
+      setError(t("schedule.doseInstructionRequired"));
+      return;
+    }
     const withoutReminders = drafts.filter((draft) => draft.times.length === 0);
     if (withoutReminders.length > 0) {
       setEmptyTimesGuard(withoutReminders);
@@ -238,6 +270,10 @@ export default function SchedulePage() {
     <AppShell>
       <h1 className="mb-4 text-2xl font-bold">{t("schedule.title")}</h1>
 
+      <div className="mb-4">
+        <Banner tone="info">{t("schedule.instructionsNotice")}</Banner>
+      </div>
+
       <div className="flex flex-col gap-3">
         {drafts.map((d) => (
           <ScheduleCard
@@ -251,11 +287,23 @@ export default function SchedulePage() {
       </div>
 
       <div className="mt-4 flex flex-col gap-3">
+        <label className="flex min-h-[56px] cursor-pointer items-start gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm leading-5 text-[var(--color-text)]">
+          <input
+            type="checkbox"
+            checked={reviewedAgainstInstructions}
+            onChange={(event) => {
+              setReviewedAgainstInstructions(event.target.checked);
+              if (event.target.checked) setError(null);
+            }}
+            className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+          />
+          <span>{t("schedule.instructionsConfirmation")}</span>
+        </label>
         <GhostButton onClick={previewCall} disabled={previewing}>
           <Play size={16} /> {t("schedule.previewCall", { name: patientName })}
         </GhostButton>
         {error && <Banner tone="warn">{error}</Banner>}
-        <PrimaryButton onClick={start} disabled={saving}>
+        <PrimaryButton onClick={start} disabled={saving || !reviewedAgainstInstructions}>
           <Check size={18} /> {t("schedule.start")}
         </PrimaryButton>
       </div>

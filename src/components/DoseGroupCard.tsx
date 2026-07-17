@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CalendarX, CheckCircle2, Circle, PhoneCall, XCircle } from "lucide-react";
+import { AlertTriangle, CalendarX, CheckCircle2, Circle, PhoneCall } from "lucide-react";
 import { Card, GhostButton } from "@/components/ui";
 import { HighRiskBanner } from "@/components/HighRiskBanner";
 import { useI18n } from "@/lib/i18n/provider";
@@ -30,14 +30,14 @@ export function DoseGroupCard({
   const expiringMeds = group.meds.filter((med) => med.expiryStatus === "expiring");
 
   const tone =
-    group.status === "confirmed" ? "success" : group.status === "missed" ? "danger" : "surface";
+    group.status === "confirmed" ? "success" : group.status === "not_confirmed" ? "warn" : "surface";
   const Icon =
-    group.status === "confirmed" ? CheckCircle2 : group.status === "missed" ? XCircle : Circle;
+    group.status === "confirmed" ? CheckCircle2 : group.status === "not_confirmed" ? AlertTriangle : Circle;
   const iconColor =
     group.status === "confirmed"
       ? "text-[var(--color-success)]"
-      : group.status === "missed"
-        ? "text-[var(--color-danger)]"
+      : group.status === "not_confirmed"
+        ? "text-[var(--color-warn)]"
         : "text-[var(--color-text-muted)]";
 
   return (
@@ -76,8 +76,9 @@ export function DoseGroupCard({
       {group.status === "confirmed" && (
         <p className="text-sm text-[var(--color-success)]">{t("home.confirmedManual")}</p>
       )}
-      {group.status === "missed" && (
+      {group.status === "not_confirmed" && (
         <div className="flex gap-2">
+          <p className="sr-only">{t("home.notConfirmed")}</p>
           <GhostButton className="flex-1 text-sm" onClick={() => onMark(group)}>
             {t("home.markTaken")}
           </GhostButton>

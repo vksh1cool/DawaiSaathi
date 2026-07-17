@@ -1,0 +1,33 @@
+{
+  "packageId": "com.vksh1cool.dawaisaathi",
+  "host": "dawaisaathi.pages.dev",
+  "name": "DawaiSaathi",
+  "launcherName": "DawaiSaathi",
+  "display": "standalone",
+  "displayOverride": ["standalone", "minimal-ui"],
+  "themeColor": "#0F766E",
+  "themeColorDark": "#115E59",
+  "navigationColor": "#FAFAF7",
+  "navigationColorDark": "#0F172A",
+  "navigationDividerColor": "#E7E5E4",
+  "navigationDividerColorDark": "#1E293B",
+  "backgroundColor": "#FAFAF7",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://dawaisaathi.pages.dev/icons/icon-512.png",
+  "maskableIconUrl": "https://dawaisaathi.pages.dev/icons/icon-512-maskable.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "android.keystore",
+    "alias": "dawaisaathi"
+  },
+  "appVersionCode": 1000000,
+  "appVersion": "1.0.0",
+  "webManifestUrl": "https://dawaisaathi.pages.dev/manifest.webmanifest",
+  "fullScopeUrl": "https://dawaisaathi.pages.dev/",
+  "fallbackType": "customtabs",
+  "enableSiteSettingsShortcut": true,
+  "minSdkVersion": 23,
+  "orientation": "any",
+  "launchHandlerClientMode": "navigate-existing"
+}

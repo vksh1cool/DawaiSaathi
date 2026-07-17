@@ -4,6 +4,7 @@ import { Trash2, Plus, CalendarX } from "lucide-react";
 import { Card } from "@/components/ui";
 import { ConfidenceField } from "@/components/ConfidenceField";
 import { HighRiskBanner } from "@/components/HighRiskBanner";
+import { PackCheckCard } from "@/components/PackCheckCard";
 import { useI18n } from "@/lib/i18n/provider";
 import { expiryStatus } from "@/lib/util/dates";
 import type { DraftMedication, Salt, MedForm, StrengthUnit } from "@/types/domain";
@@ -29,13 +30,13 @@ export function MedReviewCard({
 
   return (
     <Card className="flex flex-col gap-3">
-      {exp === "expired" && (
+      {exp === "expired" && draft.fieldConfidence.expiryDate >= 0.7 && (
         <div className="flex items-start gap-2 rounded-[10px] bg-[var(--color-danger-soft)] px-3 py-2 text-sm font-medium text-[var(--color-danger)]">
           <CalendarX size={18} className="mt-0.5 shrink-0" />
           {t("review.expired", { date: draft.expiryDate ?? "" })}
         </div>
       )}
-      {exp === "expiring" && (
+      {exp === "expiring" && draft.fieldConfidence.expiryDate >= 0.7 && (
         <div className="flex items-start gap-2 rounded-[10px] bg-[var(--color-warn-soft)] px-3 py-2 text-sm font-medium text-[var(--color-warn)]">
           <CalendarX size={18} className="mt-0.5 shrink-0" />
           {t("review.expiring", { date: draft.expiryDate ?? "" })}
@@ -172,6 +173,15 @@ export function MedReviewCard({
           onChange={(v) => set({ batchNumber: v || null })}
         />
       </div>
+
+      <ConfidenceField
+        label={t("review.manufacturer")}
+        value={draft.manufacturer ?? ""}
+        onChange={(v) => set({ manufacturer: v || null })}
+        placeholder={t("review.manufacturerPlaceholder")}
+      />
+
+      <PackCheckCard draft={draft} />
 
       {draft.highRisk && <HighRiskBanner name={draft.brandName ?? draft.displayGeneric} />}
 

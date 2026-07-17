@@ -36,5 +36,22 @@ yarn-error.log*
 !.vscode/extensions.json
 .idea
 
+# Android Trusted Web Activity: keep source and wrapper, never local SDK/cache
+# state or signing material.
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/android.keystore
+/android/*.keystore
+/android/*.jks
+/android/.idea/
+
 # tests
 /coverage
+
+# Agent files
+.agents/
+.mcp.json
+skills-lock.json
+

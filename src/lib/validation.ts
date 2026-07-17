@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { APP_LANGUAGE_CODES, CALL_LANGUAGE_CODES } from "@/lib/languages";
+import { APP_LANGUAGE_CODES, CALL_LANGUAGE_CODES, isSmsReminderLanguage } from "@/lib/languages";
 
 /** Shared zod schemas for API bodies (Arch §6 — parse before any logic). */
 
@@ -62,6 +62,9 @@ export const draftMedicationSchema = z.object({
 export const postMedicationsSchema = z.object({
   scanBatchId: z.string().optional(),
   medications: z.array(draftMedicationSchema).min(1),
+  // A scan reads packaging; it cannot establish the prescription or dose.
+  // Keep the caregiver's review gate at the API boundary as well as in UI.
+  reviewedAgainstPrescription: z.literal(true),
 });
 
 export const patchMedicationSchema = z.object({
@@ -98,6 +101,9 @@ const scheduleInputSchema = z
     // medicine. It must be sent explicitly rather than omitted, so old calls
     // can never remain active after a caregiver clears every time chip.
     times: z.array(timeSchema).max(4),
+    // Copy the exact phrase from the prescription/pack in the language the
+    // patient will hear. It is intentionally not parsed into a guessed count.
+    doseInstruction: z.string().trim().max(120).optional(),
     foodRelation: foodRelationSchema,
     startDate: dateSchema,
     endDate: dateSchema.nullable().optional(),
@@ -105,6 +111,13 @@ const scheduleInputSchema = z
   .superRefine((schedule, ctx) => {
     if (new Set(schedule.times).size !== schedule.times.length) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["times"], message: "times must be unique" });
+    }
+    if (schedule.times.length > 0 && !schedule.doseInstruction?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["doseInstruction"],
+        message: "exact dose instruction is required while reminders are active",
+      });
     }
     if (schedule.endDate && schedule.endDate < schedule.startDate) {
       ctx.addIssue({
@@ -118,6 +131,9 @@ const scheduleInputSchema = z
 export const postSchedulesSchema = z
   .object({
     schedules: z.array(scheduleInputSchema).min(1),
+    // Suggestions are convenience defaults only. The caller must make an
+    // explicit confirmation before a voice reminder is enabled.
+    reviewedAgainstInstructions: z.literal(true),
     // The UI asks the caregiver to type the patient's name before it can save
     // a daily methotrexate schedule. Kept optional for normal schedules.
     weeklyOverridePatientName: z.string().trim().min(1).optional(),
@@ -133,16 +149,27 @@ export const postSchedulesSchema = z
     }
   });
 
-export const householdSchema = z.object({
-  caregiverName: z.string().min(1),
-  uiLanguage: z.enum(APP_LANGUAGE_CODES).default("en"),
-  patient: z.object({
-    name: z.string().min(1),
-    phoneE164: z.string().regex(/^\+\d{7,15}$/, "phone must be E.164, e.g. +9198…"),
-    language: z.enum(CALL_LANGUAGE_CODES).default("hi"),
-    voiceGender: z.enum(["female", "male"]).default("female"),
-  }),
-});
+export const householdSchema = z
+  .object({
+    caregiverName: z.string().min(1),
+    uiLanguage: z.enum(APP_LANGUAGE_CODES).default("en"),
+    patient: z.object({
+      name: z.string().min(1),
+      phoneE164: z.string().regex(/^\+\d{7,15}$/, "phone must be E.164, e.g. +9198…"),
+      language: z.enum(CALL_LANGUAGE_CODES).default("hi"),
+      voiceGender: z.enum(["female", "male"]).default("female"),
+      smsReminderConsent: z.boolean().default(false),
+    }),
+  })
+  .superRefine((value, ctx) => {
+    if (value.patient.smsReminderConsent && !isSmsReminderLanguage(value.patient.language)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["patient", "smsReminderConsent"],
+        message: "SMS follow-ups are currently available only in English and Hindi.",
+      });
+    }
+  });
 
 export const patchHouseholdSchema = z.object({
   caregiverName: z.string().min(1).optional(),
@@ -153,6 +180,7 @@ export const patchHouseholdSchema = z.object({
       phoneE164: z.string().regex(/^\+\d{7,15}$/).optional(),
       language: z.enum(CALL_LANGUAGE_CODES).optional(),
       voiceGender: z.enum(["female", "male"]).optional(),
+      smsReminderConsent: z.boolean().optional(),
     })
     .optional(),
 });

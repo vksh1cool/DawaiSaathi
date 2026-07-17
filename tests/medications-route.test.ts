@@ -10,6 +10,9 @@ const mocked = vi.hoisted(() => ({
   serialize: vi.fn(),
 }));
 
+vi.mock("@/lib/cloudflare-runtime", () => ({
+  usesSupabaseAuth: () => false,
+}));
 vi.mock("@/lib/db", () => ({
   prisma: { $transaction: mocked.transaction },
 }));
@@ -17,6 +20,10 @@ vi.mock("@/lib/household", () => ({ getPatientOrThrow: mocked.getPatient }));
 vi.mock("@/lib/medications", () => ({
   draftToCreateData: mocked.createData,
   serializeMedication: mocked.serialize,
+}));
+vi.mock("@/lib/supabase/medications", () => ({
+  createSupabaseMedications: vi.fn(),
+  listSupabaseMedications: vi.fn(),
 }));
 
 import { POST } from "@/app/api/medications/route";
@@ -89,6 +96,6 @@ function request() {
   return new Request("http://localhost/api/medications", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scanBatchId: "scan-1", medications: [draft] }),
+    body: JSON.stringify({ scanBatchId: "scan-1", medications: [draft], reviewedAgainstPrescription: true }),
   });
 }

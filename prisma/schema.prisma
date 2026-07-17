@@ -4,32 +4,38 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Household {
   id            String     @id @default(cuid())
   caregiverName String
-  uiLanguage    String     @default("en") // "en" | "hi"
+  uiLanguage    String     @default("en") // "en" | "hi" | "es"
   createdAt     DateTime   @default(now())
   patients      Patient[]
 }
 
 model Patient {
-  id          String               @id @default(cuid())
-  householdId String
-  household   Household            @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  name        String
-  phoneE164   String // "+91XXXXXXXXXX"
-  language    String               @default("hi") // "hi" | "en" (call language)
-  voiceGender String               @default("female") // "female" | "male"
-  timezone    String               @default("Asia/Kolkata")
-  createdAt   DateTime             @default(now())
-  medications Medication[]
-  doseEvents  DoseEvent[]
-  findings    InteractionFinding[]
-  alerts      CaregiverAlert[]
+  id                        String               @id @default(cuid())
+  householdId               String
+  household                 Household            @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name                      String
+  phoneE164                 String // "+91XXXXXXXXXX"
+  language                  String               @default("hi") // "hi" | "en" (call language)
+  voiceGender               String               @default("female") // "female" | "male"
+  timezone                  String               @default("Asia/Kolkata")
+  // SMS is strictly opt-in. Timestamp + version makes consent auditable and
+  // lets a changed phone number revoke its prior permission.
+  smsReminderConsentAt      DateTime?
+  smsReminderConsentVersion String?
+  createdAt                 DateTime             @default(now())
+  medications               Medication[]
+  doseEvents                DoseEvent[]
+  findings                  InteractionFinding[]
+  alerts                    CaregiverAlert[]
+  smsDeliveries             SmsDelivery[]
 }
 
 model ScanBatch {
@@ -78,16 +84,19 @@ model Medication {
 }
 
 model Schedule {
-  id           String      @id @default(cuid())
-  medicationId String
-  medication   Medication  @relation(fields: [medicationId], references: [id], onDelete: Cascade)
-  timesJson    String // JSON: ["08:00","20:00"] patient-local
-  foodRelation String      @default("any") // before_food|after_food|with_food|any
-  startDate    DateTime
-  endDate      DateTime?
-  active       Boolean     @default(true)
-  createdAt    DateTime    @default(now())
-  doseEvents   DoseEvent[]
+  id              String      @id @default(cuid())
+  medicationId    String
+  medication      Medication  @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  timesJson       String // JSON: ["08:00","20:00"] patient-local
+  // Exact wording verified from the prescription or pack. The app repeats it
+  // and never infers a tablet count, liquid dose, or route.
+  doseInstruction String?
+  foodRelation    String      @default("any") // before_food|after_food|with_food|any
+  startDate       DateTime
+  endDate         DateTime?
+  active          Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  doseEvents      DoseEvent[]
 }
 
 model DoseEvent {
@@ -126,6 +135,27 @@ model ReminderCall {
   audioFile        String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  smsDeliveries    SmsDelivery[]
+}
+
+/** One consented, low-information SMS follow-up per final reminder call. */
+model SmsDelivery {
+  id               String       @id @default(cuid())
+  patientId        String
+  patient          Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  reminderCallId   String       @unique
+  reminderCall     ReminderCall @relation(fields: [reminderCallId], references: [id], onDelete: Cascade)
+  toE164           String
+  kind             String       @default("unconfirmed_reminder")
+  bodyVersion      String
+  status           String       @default("queued") // queued|sending|sent|delivered|undelivered|failed
+  twilioMessageSid String?      @unique
+  errorCode        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([patientId, createdAt])
+  @@index([status, createdAt])
 }
 
 model InteractionFinding {

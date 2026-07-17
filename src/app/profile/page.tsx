@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, User, Languages, Settings, Phone, Trash2, Power } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { AppLanguageSelect } from "@/components/AppLanguageSelect";
 import { CallLanguageSelect } from "@/components/CallLanguageSelect";
 import { Banner, Card, GhostButton, ModalDialog, PrimaryButton, Spinner, TextInput, Toast } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/provider";
@@ -19,7 +20,7 @@ import {
   type DialingRegionCode,
 } from "@/lib/onboarding";
 import { useTimedMessage } from "@/lib/use-timed-message";
-import type { AppLanguage, CallLanguage } from "@/lib/languages";
+import { isSmsReminderLanguage, type AppLanguage, type CallLanguage } from "@/lib/languages";
 
 type Household = {
   caregiverName: string;
@@ -29,6 +30,7 @@ type Household = {
     phoneE164: string;
     language: CallLanguage;
     voiceGender: "female" | "male";
+    smsReminderConsent: boolean;
   } | null;
 };
 
@@ -209,6 +211,7 @@ export default function ProfilePage() {
   }
 
   const { patient } = household;
+  const smsLanguageSupported = isSmsReminderLanguage(patient.language);
 
   return (
     <AppShell>
@@ -285,10 +288,40 @@ export default function ProfilePage() {
               <CallLanguageSelect
                 value={patient.language}
                 disabled={saving}
-                onChange={(language) => void handleSave({ patient: { language } })}
+                onChange={(language) =>
+                  void handleSave({
+                    patient: {
+                      language,
+                      ...(isSmsReminderLanguage(language) ? {} : { smsReminderConsent: false }),
+                    },
+                  })
+                }
                 generatedAudioNotice={t("onboarding.generatedVoiceRequirement")}
               />
             </div>
+            <label className={`flex min-h-[60px] items-start gap-3 rounded-[12px] bg-[var(--color-bg)] p-3 ring-1 ring-[var(--color-border)] ${smsLanguageSupported ? "cursor-pointer" : "cursor-not-allowed opacity-70"}`}>
+              <input
+                type="checkbox"
+                checked={smsLanguageSupported && patient.smsReminderConsent}
+                disabled={saving || !smsLanguageSupported}
+                onChange={(event) => {
+                  const smsReminderConsent = event.target.checked;
+                  setHousehold((current) =>
+                    current && current.patient
+                      ? { ...current, patient: { ...current.patient, smsReminderConsent } }
+                      : current,
+                  );
+                  void handleSave({ patient: { smsReminderConsent } });
+                }}
+                className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary)] disabled:opacity-40"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-[var(--color-text)]">{t("profile.smsConsentTitle")}</span>
+                <span className="mt-1 block text-xs leading-5 text-[var(--color-text-muted)]">
+                  {smsLanguageSupported ? t("profile.smsConsentBody") : t("onboarding.smsLanguagePending")}
+                </span>
+              </span>
+            </label>
           </div>
         </Card>
 
@@ -312,24 +345,13 @@ export default function ProfilePage() {
             <label className="mb-1 block text-sm font-medium text-[var(--color-text-muted)]">
               {t("profile.uiLang")}
             </label>
-            <div className="flex gap-2">
-              {(["hi", "en"] as const).map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  disabled={saving}
-                  aria-pressed={household.uiLanguage === l}
-                  onClick={() => void handleSave({ uiLanguage: l })}
-                    className={`pressable min-h-[48px] flex-1 rounded-[12px] py-3 text-sm font-semibold transition-[transform,background-color,color,opacity] duration-150 ease-[var(--ease-out)] disabled:cursor-not-allowed disabled:opacity-50 ${
-                    household.uiLanguage === l
-                      ? "bg-[var(--color-primary)] text-white"
-                      : "bg-[var(--color-bg)] text-[var(--color-text)] ring-1 ring-[var(--color-border)]"
-                  }`}
-                >
-                  {t(`onboarding.lang_${l}`)}
-                </button>
-              ))}
-            </div>
+            <AppLanguageSelect
+              value={household.uiLanguage}
+              disabled={saving}
+              label={t("profile.uiLang")}
+              className="bg-[var(--color-bg)]"
+              onChange={(uiLanguage) => void handleSave({ uiLanguage })}
+            />
           </div>
         </Card>
 

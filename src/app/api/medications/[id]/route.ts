@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { usesSupabaseAuth } from "@/lib/cloudflare-runtime";
 import { prisma } from "@/lib/db";
 import { AppError, withErrorBoundary } from "@/lib/errors";
 import { getPatientOrThrow } from "@/lib/household";
@@ -8,6 +9,7 @@ import {
   medicationSafety,
   serializeMedication,
 } from "@/lib/medications";
+import { archiveSupabaseMedication, updateSupabaseMedication } from "@/lib/supabase/medications";
 import { patchMedicationSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
@@ -17,6 +19,12 @@ type Ctx = { params: Promise<{ id: string }> };
 /** PATCH /api/medications/:id — edit fields (Arch §7.2). */
 export const PATCH = withErrorBoundary(async (req: Request, ctx: Ctx) => {
   const { id } = await ctx.params;
+  if (usesSupabaseAuth()) {
+    const body = patchMedicationSchema.parse(await req.json());
+    const medication = await updateSupabaseMedication(id, body);
+    return NextResponse.json({ medication });
+  }
+
   const patient = await getPatientOrThrow();
   const body = patchMedicationSchema.parse(await req.json());
 
@@ -49,6 +57,11 @@ export const PATCH = withErrorBoundary(async (req: Request, ctx: Ctx) => {
 /** DELETE /api/medications/:id — archive + deactivate schedules (Arch §7.2). */
 export const DELETE = withErrorBoundary(async (_req: Request, ctx: Ctx) => {
   const { id } = await ctx.params;
+  if (usesSupabaseAuth()) {
+    await archiveSupabaseMedication(id);
+    return NextResponse.json({ ok: true });
+  }
+
   const patient = await getPatientOrThrow();
   const existing = await prisma.medication.findFirst({ where: { id, patientId: patient.id } });
   if (!existing) throw new AppError("NOT_FOUND", "Medicine not found.");

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { readWebhook } from "@/lib/twilio";
 import { finalizeUnconfirmed } from "@/lib/calls";
+import { legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -9,6 +10,7 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   const { params, valid } = await readWebhook(req);
   if (!valid) return new Response("invalid signature", { status: 403 });
+  if (legacyTenantDataBlocked()) return new Response(null, { status: 204 });
 
   const callId = new URL(req.url).searchParams.get("callId")!;
   const callStatus = params.CallStatus ?? "";

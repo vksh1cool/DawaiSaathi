@@ -3,12 +3,17 @@ import { prisma } from "@/lib/db";
 import { AppError, withErrorBoundary } from "@/lib/errors";
 import { getPatientOrThrow } from "@/lib/household";
 import { draftToCreateData, serializeMedication } from "@/lib/medications";
+import { usesSupabaseAuth } from "@/lib/cloudflare-runtime";
+import { createSupabaseMedications, listSupabaseMedications } from "@/lib/supabase/medications";
 import { postMedicationsSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
 /** GET /api/medications — active medications (Arch §7.2). */
 export const GET = withErrorBoundary(async () => {
+  if (usesSupabaseAuth()) {
+    return NextResponse.json({ medications: await listSupabaseMedications() });
+  }
   const patient = await getPatientOrThrow();
   const meds = await prisma.medication.findMany({
     where: { patientId: patient.id, status: "active" },
@@ -19,6 +24,12 @@ export const GET = withErrorBoundary(async () => {
 
 /** POST /api/medications — persist caregiver-confirmed medicines (Arch §7.2). */
 export const POST = withErrorBoundary(async (req: Request) => {
+  if (usesSupabaseAuth()) {
+    const body = postMedicationsSchema.parse(await req.json());
+    const medications = await createSupabaseMedications(body.medications, body.scanBatchId);
+    return NextResponse.json({ medications }, { status: 201 });
+  }
+
   const patient = await getPatientOrThrow();
   const body = postMedicationsSchema.parse(await req.json());
 

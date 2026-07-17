@@ -32,7 +32,7 @@ One photograph of all medicine strips → a spoken dosing schedule in the patien
 
 **Split the two roles.** The person who *sets up* the system is not the person who *takes* the medicines.
 
-- **Caregiver** (smartphone, some English/Hindi literacy — typically the adult child): photographs the strips, reviews extraction, confirms the schedule, sees alerts and savings. Uses the **web app**.
+- **Caregiver** (smartphone, some app-language literacy — typically the adult child): photographs the strips, reviews extraction, confirms the schedule, sees alerts and savings. Uses the **web app**.
 - **Patient** (any phone, possibly a feature phone; possibly low literacy): receives **outbound voice calls** in their language at dose time and presses **1** after taking the medicine. Never needs the app, never needs to read.
 
 This resolves "how does a grandmother use an AI app": she doesn't. Her phone rings.
@@ -120,7 +120,7 @@ This resolves "how does a grandmother use an AI app": she doesn't. Her phone rin
 - **US-12** As a caregiver, I see an alert entry when a dose was missed after all retries.
 
 ### Epic G — Language & accessibility
-- **US-13** As a caregiver, I can toggle the entire UI between English and Hindi; as a patient, my calls come in my configured language independent of the caregiver's UI language.
+- **US-13** As a caregiver, I can switch the entire UI among reviewed app languages; as a patient, my calls come in my configured language independent of the caregiver's UI language.
   - AC-13.1: All UI strings come from `src/lib/i18n/{en,hi}.json`; no hardcoded user-facing strings in components.
 - **US-14** Elder-friendly visual defaults: base font ≥16 px, all touch targets ≥48 px, severity always encoded by icon + color + word (never color alone).
 

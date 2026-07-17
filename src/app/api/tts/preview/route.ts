@@ -7,7 +7,7 @@ import { getSlotMeds, buildSlotScripts } from "@/lib/reminder";
 import { ensureAudio } from "@/lib/tts";
 import { foodRelationSchema, timeBodySchema } from "@/lib/validation";
 import { logger } from "@/lib/logger";
-import type { FoodRelation, MedForm } from "@/types/domain";
+import type { FoodRelation } from "@/types/domain";
 import type { CallLanguage } from "@/lib/languages";
 
 export const runtime = "nodejs";
@@ -21,6 +21,7 @@ const previewSchema = timeBodySchema
       .array(
         z.object({
           medicationId: z.string().min(1),
+          doseInstruction: z.string().trim().min(1).max(120),
           foodRelation: foodRelationSchema,
         }),
       )
@@ -45,7 +46,7 @@ export const POST = withErrorBoundary(async (req: Request) => {
   if (schedules) {
     const medications = await prisma.medication.findMany({
       where: { id: { in: schedules.map((schedule) => schedule.medicationId) }, patientId: patient.id, status: "active" },
-      select: { id: true, brandName: true, form: true },
+      select: { id: true, brandName: true },
     });
     if (medications.length !== schedules.length) {
       throw new AppError("VALIDATION", "One or more medicines are not available for this preview.");
@@ -55,7 +56,7 @@ export const POST = withErrorBoundary(async (req: Request) => {
     slot = {
       meds: schedules.map((schedule) => {
         const medication = medicationsById.get(schedule.medicationId)!;
-        return { brandName: medication.brandName, count: 1, form: medication.form as MedForm };
+        return { brandName: medication.brandName, doseInstruction: schedule.doseInstruction };
       }),
       foodRelation: foodRelations.size === 1 ? [...foodRelations][0]! : "any",
     };

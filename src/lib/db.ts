@@ -1,7 +1,8 @@
 import { PrismaClient, type Medication, type Prisma } from "@prisma/client";
 import { PrismaD1 } from "@prisma/adapter-d1";
 import { cache } from "react";
-import { getD1Binding, usesD1 } from "@/lib/cloudflare-runtime";
+import { getD1Binding, usesD1, usesSupabaseAuth } from "@/lib/cloudflare-runtime";
+import { AppError } from "@/lib/errors";
 import type {
   Salt,
   FieldConfidence,
@@ -29,6 +30,12 @@ function getLocalPrisma(): PrismaClient {
  * scoped for server work; local SQLite retains its familiar singleton.
  */
 export const getPrisma = cache((): PrismaClient => {
+  if (usesSupabaseAuth()) {
+    throw new AppError(
+      "TENANT_RUNTIME_PENDING",
+      "Secure data migration is still being completed.",
+    );
+  }
   if (!usesD1()) return getLocalPrisma();
   return new PrismaClient({ adapter: new PrismaD1(getD1Binding()) });
 });

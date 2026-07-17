@@ -3,9 +3,9 @@
   <p><b>Snap your meds once. Spoken dosing, interaction checks, and IVR reminders for any phone.</b></p>
   <p><i>Built for the OpenAI Build Week (Codex + GPT-5.6)</i></p>
   <p>
-    <a href="https://dawaisaathi.pages.dev"><b>🌐 Use it now — free at dawaisaathi.pages.dev</b></a>
+    <a href="https://dawaisaathi.pages.dev"><b>🌐 Try the private preview at dawaisaathi.pages.dev</b></a>
     ·
-    <a href="https://github.com/vksh1cool/DawaiSaathi/releases"><b>📱 Download the Android app</b></a>
+    <a href="https://github.com/vksh1cool/DawaiSaathi/releases"><b>📱 Android releases</b></a>
   </p>
 </div>
 
@@ -17,51 +17,52 @@ Elderly patients commonly take 4–8 daily medications. Roughly 50% of patients 
 
 **Every existing solution assumes a smartphone-literate patient.** Pill-reminder apps require the patient to read English, install an app, and respond to push notifications. The highest-risk users (rural, elderly, low-literacy) are excluded.
 
-**DawaiSaathi** ("Medicine Companion") splits the roles. The caregiver (e.g., an adult child) snaps photos of the medicine strips to set up the schedule. The patient receives an automated phone call in their own language (Hindi/English) at dose time and simply presses `1` to confirm. No app, no reading required.
+**DawaiSaathi** ("Medicine Companion") splits the roles. The caregiver (e.g., an adult child) snaps photos of the medicine strips to set up the schedule. The patient receives an automated phone call in their own language at dose time and simply presses `1` to confirm. No app, no reading required.
 
 ## ✨ What it does
 
 - 📸 **Scan & Extract**: Photograph up to 5 medicine strips at once. The AI extracts brand name, salt composition, form, MRP, expiry, and manufacturer in seconds.
-- 🗣️ **Spoken Reminders (IVR)**: Places outbound voice calls using Twilio in Hindi or English. The patient just answers the call, listens, and presses `1` on the keypad if they took their medicine.
+- 🌐 **Caregiver UI languages**: Reviewed interface dictionaries are available in English, Hindi, and Spanish. The app only exposes a UI language after the full dictionary is checked in and tested.
+- 🗣️ **Spoken Reminders (IVR)**: Places outbound voice calls using Twilio. Hindi and English remain first-class; Bengali, Arabic, French, Portuguese, Afrikaans, Amharic, Swahili, Hausa, Yoruba, and Spanish are available for call setup. Languages without a matching Twilio `<Say>` locale use generated audio rather than an unrelated fallback voice.
 - 🚨 **Safety Checks**: Cross-references medications against openFDA label data to detect and clearly explain dangerous drug-drug interactions (e.g., Warfarin + Aspirin) without hallucinating.
 - 💰 **Generic Savings**: Identifies identical generic medicines from India's Jan Aushadhi program and shows exactly how much money the patient could save each month.
 - 📊 **Caregiver Dashboard**: A beautiful, accessible Next.js web app that tracks adherence, upcoming doses, and alerts the caregiver if a dose is missed.
 
 ---
 
-## 🏗️ Architecture Under the Hood
+## 🏗️ Deployment and data architecture
 
-DawaiSaathi is built on a decoupled, edge-native architecture on Cloudflare:
+The clean public origin is **[dawaisaathi.pages.dev](https://dawaisaathi.pages.dev)**. A lightweight Cloudflare Pages gateway forwards requests privately to the OpenNext Worker, so the stable Pages URL and Worker-only bindings can coexist.
+
+The live deployment currently uses the isolated D1/R2 preview runtime. The Supabase Postgres + Auth + RLS migration is present in this repository but deliberately **not claimed as live** until a Supabase project has been linked, the migration applied, and tenant/duplicate-delivery tests have passed. This is a safety gate for health information, not a cosmetic switch.
 
 ```mermaid
 graph TD
     subgraph Data Ingestion
-        A[Next.js App Worker<br/>OpenNext on Cloudflare]
-        C[Caregiver Browser] --> A
-        T[Twilio Webhooks] --> A
+        C[Caregiver browser / Android TWA] --> P[Cloudflare Pages gateway<br/>dawaisaathi.pages.dev]
+        P --> A[Next.js App Worker<br/>OpenNext on Cloudflare Workers]
+        T[Twilio webhooks] --> A
     end
 
     subgraph AI & Verification
-        A --> B[OpenAI GPT-5.6 Vision<br/>Strip Extraction]
+        A --> B[Groq API<br/>Llama-4-Scout Vision]
         A --> C2[OpenAI GPT-4o-mini-tts<br/>Voice Generation]
         A --> D[openFDA API<br/>Label Grounding]
     end
 
     subgraph State & Storage
-        A --> E[(Cloudflare D1<br/>SQLite Database)]
-        A --> F[(Cloudflare R2<br/>Private Audio/Photo Assets)]
-        A --> G[Cloudflare KV<br/>Jan Aushadhi Reference Data]
+        A --> E[(D1 — current isolated runtime)]
+        A --> F[(Private Cloudflare R2<br/>photos + generated audio)]
+        A --> I[(Dedicated R2 + Durable Object<br/>OpenNext incremental cache)]
     end
 
-    subgraph Reminder Dispatch
-        H[Cloudflare Cron Trigger] --> I[Scheduler Worker]
-        I --> J[Reminder Queue]
-        J --> K[Dispatch Worker]
-        K --> L[Household Call Coordinator<br/>Durable Object for concurrency]
-        L --> E
-        L --> T
+    subgraph Production data cutover (gated)
+        A -. authenticated, RLS-scoped .-> S[(Supabase Postgres + Auth)]
+        S -. tenant policies .-> H[Households / members / medication records]
     end
 ```
+
+Read [the production architecture and rollout gates](docs/08-CLOUDFLARE-PRODUCTION-ARCHITECTURE.md) before inviting real households.
 
 ## 🚀 Getting Started
 
@@ -70,9 +71,11 @@ The easiest way to try DawaiSaathi is the live dashboard at **[dawaisaathi.pages
 If you want to run it locally or deploy it yourself:
 
 ### Prerequisites
-- **Node.js 20+**
-- **OpenAI API Key**: For GPT-5.6 Vision and TTS generation.
+- **Node.js 22+**
+- **Groq API Key**: For fast Llama-4-Scout Vision extraction and LLM routing.
+- **OpenAI API Key**: For GPT-4o-mini-tts generation.
 - **Twilio Account**: For live IVR phone calls (simulated calls work in the browser without Twilio).
+- **Supabase Project**: Required only for the gated Postgres/Auth cutover described in [`supabase/README.md`](supabase/README.md).
 
 ### Running Locally
 ```bash
@@ -82,12 +85,10 @@ npm install
 
 # Setup your .env file
 cp .env.example .env
-# Edit .env with your OpenAI and Twilio keys
+# Edit .env with your Groq, OpenAI, and (optionally) Twilio keys
 
-# Run database migrations and seed
-npm run db:push
-npm run seed
-npm run demo:seed
+# Initialise the local D1 database used by `next dev` through OpenNext
+npm run d1:migrate:local
 
 # Start the dev server
 npm run dev
@@ -97,12 +98,36 @@ npm run worker
 ```
 Head over to `http://localhost:3000` to access the dashboard.
 
-### Deploying to Cloudflare Pages
-The app uses OpenNext to run on Cloudflare Workers and Pages.
-1. Connect this repo to Cloudflare Pages.
-2. Set the build command to `npm run cf:build`.
-3. Set the output directory to `.open-next/assets`.
-4. Configure your D1 database, R2 buckets, and Durable Objects in the Cloudflare dashboard according to `wrangler.jsonc`.
+With `DEMO_MODE=true`, you can optionally seed the local D1 demo after the app is running:
+
+```bash
+npm run demo:seed
+```
+
+`npm run db:push` is still useful for standalone Prisma/SQLite scripts, but it does not initialise the D1 binding that OpenNext uses during `next dev`.
+
+### Deploying to Cloudflare
+
+The production setup has two deployables on purpose: the OpenNext Worker holds the application and private bindings; the Pages project is a minimal gateway that owns the clean public URL.
+
+1. Create the Worker bindings in [`wrangler.jsonc`](wrangler.jsonc): D1 (isolated runtime), private R2 media/cache buckets, and the OpenNext cache Durable Object.
+2. Set secrets with `wrangler secret put` (AI keys, Twilio, access-gate secrets, and later Supabase credentials). Never commit them or add them to `vars`.
+3. Deploy the application Worker: `npm run cf:deploy`.
+4. Create a Pages project named `dawaisaathi`, then deploy [`pages-gateway`](pages-gateway): `npx wrangler pages deploy pages-gateway --project-name dawaisaathi`.
+5. Onboard launchpixel.in in Cloudflare Email Sending (SPF/DKIM) and authorize feedback@launchpixel.in. The in-app feedback button sends appreciation or feature requests to contact@launchpixel.in; until this binding is live it fails closed rather than pretending an email was sent.
+6. Verify https://dawaisaathi.pages.dev/api/app-info and a real, consented Twilio test call. The live build reports whether telephony is configured.
+
+For the Supabase cutover, follow [`supabase/README.md`](supabase/README.md) first. Do not change the runtime database flag merely because credentials exist.
+
+### Twilio trial-mode rule
+
+For this proof of concept, one Twilio sender number may serve every household, while each household's consent and reminder records remain isolated. A Twilio trial account can only contact verified destination numbers: test only with explicit consent and verified recipients. Keep caregiver sign-in OTP delivery separate from medication-reminder traffic, send no medicine names or doses by SMS, and honor `STOP` across the shared sender before any future message is queued.
+
+---
+
+## 💬 Product feedback
+
+The floating feedback button asks for one short thing to improve or one short thing the caregiver appreciated and why. It warns people not to include medicine names, prescriptions, phone numbers, or other health details. Messages are sent server-to-server to contact@launchpixel.in; no browser mailto link or email credential is exposed.
 
 ---
 
@@ -110,11 +135,34 @@ The app uses OpenNext to run on Cloudflare Workers and Pages.
 
 - **Framework**: Next.js 15 (App Router) running on Cloudflare Workers (via OpenNext).
 - **Language**: TypeScript (strict).
-- **Database**: SQLite via Prisma ORM (Cloudflare D1).
-- **Storage**: Cloudflare R2 (for photos and generated TTS audio).
+- **Current isolated data runtime**: SQLite locally / Cloudflare D1 in the deployed demo.
+- **Production data target**: Supabase Postgres + Auth + RLS, with a migration and rollout gates in [`supabase/`](supabase/).
+- **Storage**: Private Cloudflare R2 for photos and generated TTS audio; private routes use `no-store` rather than public object URLs.
 - **Styling**: Tailwind CSS 4.x with a custom accessibility-first design system.
-- **AI**: OpenAI API (`gpt-5.6` for structured extraction, `gpt-4o-mini-tts` for voice).
+- **AI**: Groq API (`llama-4-scout` for structured extraction, `llama-3.3-70b` for logic), OpenAI API (`gpt-4o-mini-tts` for voice).
 - **Telephony**: Twilio Programmable Voice (TwiML).
+- **Android**: Trusted Web Activity generated with Bubblewrap; no production `server.url` WebView wrapper.
+
+---
+
+## 📱 Android APK and GitHub Releases
+
+The Android app is versioned from [`android/twa-manifest.json`](android/twa-manifest.json) and opens the same production origin, `https://dawaisaathi.pages.dev`. The release workflow produces both a signed APK and an Android App Bundle (AAB), attaches SHA-256 checksums, and creates a GitHub Release for each `vX.Y.Z` tag.
+
+Before the first release, configure these once:
+
+1. Generate one long-lived Android signing keystore. Keep it secure; every future update must use the same key.
+2. Put its SHA-256 certificate fingerprint in the Worker as `ANDROID_APP_CERT_SHA256`, deploy, and confirm `/.well-known/assetlinks.json` returns the package `com.vksh1cool.dawaisaathi` and that fingerprint.
+3. Add repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
+4. Add the same public SHA-256 fingerprint as the repository variable `ANDROID_APP_CERT_SHA256`.
+5. Push a tag such as `v1.0.0`:
+
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+
+The workflow fails closed if signing material or the live Android trust relationship is absent, so it never publishes an unsigned or unverified release. See [`android/README.md`](android/README.md) for local regeneration and build details.
 
 ---
 
@@ -122,9 +170,8 @@ The app uses OpenNext to run on Cloudflare Workers and Pages.
 
 DawaiSaathi includes a built-in demo persona: **Kamla Devi**.
 To experience the app as a caregiver setting up medicines for an elderly patient:
-1. Run `npm run demo:seed` to pre-populate Kamla Devi's profile.
-2. The UI will guide you through scanning a demo medicine strip, checking interactions, and initiating a simulated phone call.
-3. You can hear exactly what Kamla Devi hears in Hindi and confirm the dose by pressing 1.
+1. The UI will guide you through scanning a demo medicine strip, checking interactions, and initiating a simulated phone call.
+2. You can hear exactly what Kamla Devi hears in Hindi and confirm the dose by pressing 1.
 
 ---
 
@@ -133,9 +180,10 @@ To experience the app as a caregiver setting up medicines for an elderly patient
 | Feature | Why it matters |
 |---------|----------------|
 | **WhatsApp Bot Integration** | Send text-based alerts to the caregiver if a dose is missed, without requiring them to check the dashboard. |
-| **Regional Language Expansion** | Add support for Bengali, Tamil, Telugu, and Marathi TTS voices. |
-| **Android APK (TWA)** | Wrap the PWA in a Trusted Web Activity for easy installation via the Google Play Store. |
+| **Regional Language Expansion** | Expand beyond the current multilingual call setup with reviewed scripts, supported TTS, and regional delivery tests. |
+| **Supabase tenant rollout** | Apply and test phone/email caregiver auth, household RLS, invitations, and the full data-adapter migration before real household data is accepted. |
+| **Android APK (TWA)** | Signed release pipeline is ready; configure the release key and publish the first verified `vX.Y.Z` artifact. |
 | **Pharmacy Ordering** | Direct integration to re-order medicines when a strip is running low. |
-| **Multiple Households** | Allow a single caregiver to manage medicines for both their parents and grandparents simultaneously. |
+| **Household switching** | Safely expose multi-household switching after medicine, reminder, media, and webhook routes are tenant-scoped. |
 
 *Have an idea to improve DawaiSaathi? Open an issue or submit a pull request!*

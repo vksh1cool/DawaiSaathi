@@ -3,6 +3,7 @@ import { Inter, Noto_Sans_Devanagari } from "next/font/google";
 import "./globals.css";
 import { I18nProvider } from "@/lib/i18n/provider";
 import { AppInfoProvider } from "@/lib/app-info";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -36,7 +37,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html suppressHydrationWarning>
       <body className={`${inter.variable} ${notoDevanagari.variable} antialiased`}>
         <I18nProvider>
-          <AppInfoProvider>{children}</AppInfoProvider>
+          <AppInfoProvider>
+            {children}
+            <ServiceWorkerRegistration />
+          </AppInfoProvider>
         </I18nProvider>
       </body>
     </html>

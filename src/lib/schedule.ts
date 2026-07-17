@@ -67,6 +67,7 @@ export async function suggestSchedules(patientId: string): Promise<ScheduleSugge
 export type ScheduleInput = {
   medicationId: string;
   times: string[];
+  doseInstruction?: string;
   foodRelation: FoodRelation;
   startDate: string; // YYYY-MM-DD
   endDate?: string | null;
@@ -79,6 +80,10 @@ export async function saveSchedules(
   inputs: ScheduleInput[],
   weeklyOverridePatientName?: string,
 ) {
+  const incomplete = inputs.find((input) => input.times.length > 0 && !input.doseInstruction?.trim());
+  if (incomplete) {
+    throw new AppError("VALIDATION", "Enter the exact dose instruction before enabling a reminder.");
+  }
   const medIds = inputs.map((i) => i.medicationId);
   // Verify every requested medicine belongs to this patient. Silently
   // discarding unknown IDs makes a partially-saved regimen dangerously hard
@@ -161,6 +166,7 @@ export async function saveSchedules(
         data: {
           medicationId: input.medicationId,
           timesJson: JSON.stringify(input.times),
+          doseInstruction: input.doseInstruction!.trim(),
           foodRelation: input.foodRelation,
           startDate: zonedToUtc(input.startDate, "00:00", tz),
           endDate: input.endDate ? zonedToUtc(input.endDate, "23:59", tz) : null,
@@ -195,6 +201,7 @@ export async function getActiveSchedules(patientId: string, tz: string) {
     medicationId: schedule.medicationId,
     medication: schedule.medication,
     times: parseStringArray(schedule.timesJson),
+    doseInstruction: schedule.doseInstruction,
     foodRelation: schedule.foodRelation,
     startDate: utcToLocalDate(schedule.startDate, tz),
     endDate: schedule.endDate ? utcToLocalDate(schedule.endDate, tz) : null,
@@ -207,7 +214,13 @@ export async function getActiveSchedules(patientId: string, tz: string) {
  */
 export async function materializeDoseEvents(patientId?: string): Promise<number> {
   const schedules = await prisma.schedule.findMany({
-    where: { active: true, medication: patientId ? { patientId } : undefined },
+    where: {
+      active: true,
+      // A legacy/partial schedule must never materialize an event that could
+      // result in an invented spoken dose.
+      doseInstruction: { not: null },
+      medication: patientId ? { patientId } : undefined,
+    },
     include: { medication: { include: { patient: true } } },
   });
 

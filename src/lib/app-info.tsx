@@ -7,27 +7,34 @@ export type AppInfo = {
   demoMode: boolean;
   telephonyEnabled: boolean;
   hasHousehold: boolean;
+  authMode?: "access_gate" | "supabase";
+  signedIn?: boolean;
+  tenantRuntimeReady?: boolean;
 };
-
-const unavailableInfo: AppInfo = { demoMode: false, telephonyEnabled: false, hasHousehold: false };
 
 const AppInfoContext = createContext<{
   info: AppInfo | null;
+  unavailable: boolean;
   /** Resolves only after the new flags have been read and stored. */
-  refresh: () => Promise<AppInfo>;
-}>({ info: null, refresh: async () => unavailableInfo });
+  refresh: () => Promise<AppInfo | null>;
+}>({ info: null, unavailable: false, refresh: async () => null });
 
 export function AppInfoProvider({ children }: { children: React.ReactNode }) {
   const [info, setInfo] = useState<AppInfo | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
 
-  const refresh = useCallback(async (): Promise<AppInfo> => {
+  const refresh = useCallback(async (): Promise<AppInfo | null> => {
     try {
       const next = await apiGet<AppInfo>("/api/app-info");
       setInfo(next);
+      setUnavailable(false);
       return next;
     } catch {
-      setInfo(unavailableInfo);
-      return unavailableInfo;
+      // Network/server failure is unknown, not proof that onboarding is
+      // incomplete. Preserve any last good flags and never redirect a user to
+      // onboarding based on a failed bootstrap request.
+      setUnavailable(true);
+      return null;
     }
   }, []);
 
@@ -36,7 +43,7 @@ export function AppInfoProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   return (
-    <AppInfoContext.Provider value={{ info, refresh }}>{children}</AppInfoContext.Provider>
+    <AppInfoContext.Provider value={{ info, unavailable, refresh }}>{children}</AppInfoContext.Provider>
   );
 }
 

@@ -42,9 +42,21 @@ export const POST = withErrorBoundary(async (req: Request) => {
     throw new AppError("VALIDATION", `Please use at most ${MAX_FILES} photos.`);
   const normalizedFiles = files.map((file) => ({ file, mimeType: imageMimeType(file) }));
   for (const { file, mimeType } of normalizedFiles) {
-    if (file.size > MAX_BYTES) throw new AppError("VALIDATION", "Each photo must be under 10 MB.");
+    if (file.size > MAX_BYTES) throw new AppError("VALIDATION", "Each photo must be under 4 MB.");
     if (!mimeType) throw new AppError("VALIDATION", `Unsupported image type: ${file.type || "unknown"}`);
   }
+
+  // Validate the actual file signatures before creating database or object
+  // records. MIME types and filename extensions are client-provided metadata.
+  const uploadFiles = await Promise.all(
+    normalizedFiles.map(async ({ file, mimeType }, index) => {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (!hasExpectedImageSignature(bytes, mimeType!)) {
+        throw new AppError("VALIDATION", `Photo ${index + 1} does not match its declared image format.`);
+      }
+      return { file, mimeType: mimeType!, bytes };
+    }),
+  );
 
   const batch = await prisma.scanBatch.create({
     data: { patientId: patient.id, status: "processing" },
@@ -54,23 +66,22 @@ export const POST = withErrorBoundary(async (req: Request) => {
   const prepared: { dataUrl: string; photoNumber: number }[] = [];
   const preprocessingIssues: string[] = [];
   let idx = 0;
-  for (const { file: f, mimeType } of normalizedFiles) {
+  for (const { file: f, mimeType, bytes: buf } of uploadFiles) {
     idx += 1;
-    const buf = new Uint8Array(await f.arrayBuffer());
-    const extension = EXTENSION_BY_MIME[mimeType!];
+    const extension = EXTENSION_BY_MIME[mimeType];
     const filename = `${idx}.${extension}`;
     const filePath = `photos/${batch.id}/${filename}`;
-    await putPrivateAsset(filePath, buf, mimeType!);
+    await putPrivateAsset(filePath, buf, mimeType);
     await prisma.scanPhoto.create({
       data: {
         batchId: batch.id,
         filePath,
-        mimeType: mimeType!,
+        mimeType,
         sizeBytes: f.size,
       },
     });
     try {
-      prepared.push({ dataUrl: await resizeToDataUrl(buf, mimeType!), photoNumber: idx });
+      prepared.push({ dataUrl: await resizeToDataUrl(buf, mimeType), photoNumber: idx });
     } catch (err) {
       // A damaged/unsupported image must not discard the useful photos from
       // the same upload. It is represented exactly like an isolated vision
@@ -121,4 +132,18 @@ function imageMimeType(file: File): (typeof ALLOWED)[number] | null {
   if (file.type) return null;
   const extension = file.name.split(".").pop()?.toLowerCase();
   return extension ? MIME_BY_EXTENSION[extension] ?? null : null;
+}
+
+/** Reject a renamed non-image before it reaches storage or the vision provider. */
+function hasExpectedImageSignature(bytes: Uint8Array, mimeType: (typeof ALLOWED)[number]): boolean {
+  if (mimeType === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (mimeType === "image/png") {
+    return bytes.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((byte, index) => bytes[index] === byte);
+  }
+  // WebP is a RIFF container with a WEBP signature at bytes 8–11.
+  return bytes.length >= 12 &&
+    String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+    String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
 }

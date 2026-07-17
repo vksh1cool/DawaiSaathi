@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { householdSchema, markDoseGroupSchema } from "@/lib/validation";
+import { householdSchema, markDoseGroupSchema, postSchedulesSchema } from "@/lib/validation";
 
 describe("Dose-group confirmation validation", () => {
   it("accepts a bounded set of unique dose event ids", () => {
@@ -37,6 +37,40 @@ describe("global reminder language validation", () => {
           language: "zz",
           voiceGender: "female",
         },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("does not allow consent for an SMS template that has not been reviewed", () => {
+    expect(
+      householdSchema.safeParse({
+        caregiverName: "Asha",
+        patient: {
+          name: "Amina",
+          phoneE164: "+254712345678",
+          language: "sw",
+          voiceGender: "female",
+          smsReminderConsent: true,
+        },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("caregiver confirmation gates", () => {
+  it("does not allow a reminder schedule to be enabled without an explicit instruction review", () => {
+    expect(
+      postSchedulesSchema.safeParse({
+        schedules: [{ medicationId: "med-1", times: ["08:00"], doseInstruction: "1 tablet", foodRelation: "any", startDate: "2026-07-17" }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("does not allow an active schedule to omit the exact dose wording", () => {
+    expect(
+      postSchedulesSchema.safeParse({
+        schedules: [{ medicationId: "med-1", times: ["08:00"], foodRelation: "any", startDate: "2026-07-17" }],
+        reviewedAgainstInstructions: true,
       }).success,
     ).toBe(false);
   });

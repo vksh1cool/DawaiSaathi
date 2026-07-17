@@ -22,6 +22,7 @@ describe("DoseEvent Materialization", () => {
           {
             medicationId: "med_1",
             times: ["08:10", "08:10"],
+            doseInstruction: "1 tablet",
             foodRelation: "any",
             startDate: "2026-07-16",
             endDate: "2026-07-15",
@@ -36,10 +37,12 @@ describe("DoseEvent Materialization", () => {
           {
             medicationId: "med_1",
             times: ["08:00", "20:00"],
+            doseInstruction: "1 tablet",
             foodRelation: "after_food",
             startDate: "2026-07-15",
           },
         ],
+        reviewedAgainstInstructions: true,
       }).schedules[0].times,
     ).toEqual(["08:00", "20:00"]);
     expect(
@@ -48,10 +51,12 @@ describe("DoseEvent Materialization", () => {
           {
             medicationId: "med_1",
             times: [],
+            doseInstruction: "",
             foodRelation: "any",
             startDate: "2026-07-15",
           },
         ],
+        reviewedAgainstInstructions: true,
       }).schedules[0].times,
     ).toEqual([]);
     expect(() => simulateDigitsSchema.parse({ reminderCallId: "call", digits: "9" })).toThrow();

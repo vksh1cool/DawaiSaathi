@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { PrimaryButton, GhostButton, Field, TextInput, Banner } from "@/components/ui";
 import { CallLanguageSelect } from "@/components/CallLanguageSelect";
+import { AppLanguageSelect } from "@/components/AppLanguageSelect";
+import { FeedbackLauncher } from "@/components/FeedbackLauncher";
 import { useI18n } from "@/lib/i18n/provider";
 import { useAppInfo } from "@/lib/app-info";
 import { apiJson, ApiError } from "@/lib/api-client";
@@ -28,7 +30,7 @@ import {
   isValidPhoneInput,
   type DialingRegionCode,
 } from "@/lib/onboarding";
-import { speechLocale, type CallLanguage } from "@/lib/languages";
+import { isSmsReminderLanguage, speechLocale, type CallLanguage } from "@/lib/languages";
 import { voiceSampleScript } from "@/lib/voice-samples";
 
 type VoiceGender = "female" | "male";
@@ -45,16 +47,21 @@ export default function OnboardingPage() {
   const [self, setSelf] = useState(false);
   const [callLang, setCallLang] = useState<CallLanguage>("hi");
   const [voice, setVoice] = useState<VoiceGender>("female");
+  const [smsReminderConsent, setSmsReminderConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const previewRequestRef = useRef(0);
+  // A repeated POST after a flaky mobile connection must resolve to the same
+  // household when the Supabase tenant path is enabled, not create a duplicate.
+  const onboardingIdempotencyKeyRef = useRef<string | null>(null);
 
   const patientDisplayName = self ? caregiverName.trim() : patientName.trim();
   const mobileValid = isValidPhoneInput(mobileNumber, phoneRegion);
   const selectedPhoneRegion = dialingRegion(phoneRegion);
+  const smsLanguageSupported = isSmsReminderLanguage(callLang);
 
   const stopPreview = () => {
     previewRequestRef.current += 1;
@@ -172,6 +179,7 @@ export default function OnboardingPage() {
     setSaving(true);
     setError(null);
     try {
+      onboardingIdempotencyKeyRef.current ??= crypto.randomUUID();
       await apiJson("/api/household", "POST", {
         caregiverName: caregiverName.trim(),
         uiLanguage: lang,
@@ -180,24 +188,35 @@ export default function OnboardingPage() {
           phoneE164: phoneToE164(mobileNumber, phoneRegion),
           language: callLang,
           voiceGender: voice,
+          smsReminderConsent,
         },
+      }, {
+        headers: { "Idempotency-Key": onboardingIdempotencyKeyRef.current },
       });
 
-      // Do not navigate against stale app-info. The previous fire-and-forget
-      // refresh could send a successful setup straight back to onboarding.
-      await refresh();
-      window.location.replace("/");
+      await leaveOnboarding();
     } catch (e) {
       if (e instanceof ApiError && e.code === "CONFLICT") {
         // A completed setup is safer to preserve than to overwrite. This also
         // recovers cleanly if the user returns to an old onboarding tab.
-        await refresh();
-        window.location.replace("/");
+        await leaveOnboarding();
         return;
       }
       setError(e instanceof ApiError ? e.message : t("onboarding.finishError"));
       setSaving(false);
     }
+  };
+
+  const leaveOnboarding = async () => {
+    // Do not navigate against stale app-info. Supabase's staged tenant
+    // rollout deliberately lands on the secure-status screen rather than
+    // flashing the blocked legacy workspace after a successful setup.
+    const appInfo = await refresh();
+    const destination =
+      appInfo?.authMode === "supabase" && !appInfo.tenantRuntimeReady
+        ? "/secure-setup"
+        : "/";
+    window.location.replace(destination);
   };
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -239,25 +258,17 @@ export default function OnboardingPage() {
           </ol>
         </div>
 
-        <div className="flex rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1" role="group" aria-label={t("onboarding.appLanguage")}>
-          {(["en", "hi"] as const).map((language) => (
-            <button
-              key={language}
-              type="button"
-              aria-pressed={lang === language}
-              onClick={() => {
-                setLang(language);
-                setError(null);
-              }}
-              className={`pressable min-h-9 rounded-lg px-3 text-sm font-semibold transition-[transform,background-color,color] duration-150 ease-[var(--ease-out)] ${
-                lang === language
-                  ? "bg-[var(--color-primary)] text-white"
-                  : "text-[var(--color-text-muted)]"
-              }`}
-            >
-              {language === "en" ? "EN" : "हि"}
-            </button>
-          ))}
+        <div className="flex items-center gap-1.5">
+          <FeedbackLauncher compact />
+          <AppLanguageSelect
+            compact
+            value={lang}
+            label={t("onboarding.appLanguage")}
+            onChange={(language) => {
+              setLang(language);
+              setError(null);
+            }}
+          />
         </div>
       </header>
 
@@ -439,6 +450,7 @@ export default function OnboardingPage() {
                 onChange={(language) => {
                   stopPreview();
                   setCallLang(language);
+                  if (!isSmsReminderLanguage(language)) setSmsReminderConsent(false);
                   setVoiceStatus(null);
                 }}
                 describedBy="call-language-help"
@@ -491,6 +503,24 @@ export default function OnboardingPage() {
                 {voiceStatus ?? t("onboarding.previewHelp")}
               </p>
             </div>
+
+            <label className="mt-4 flex min-h-[64px] cursor-pointer items-start gap-3 rounded-[16px] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm leading-5 text-[var(--color-text)]">
+              <input
+                type="checkbox"
+                checked={smsReminderConsent}
+                disabled={!smsLanguageSupported}
+                onChange={(event) => setSmsReminderConsent(event.target.checked)}
+                className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary)] disabled:opacity-40"
+              />
+              <span>
+                <span className="block font-semibold">{t("onboarding.smsConsentTitle")}</span>
+                <span className="mt-1 block text-[var(--color-text-muted)]">
+                  {smsLanguageSupported
+                    ? t("onboarding.smsConsentBody")
+                    : t("onboarding.smsLanguagePending")}
+                </span>
+              </span>
+            </label>
 
             <OnboardingFooter error={error}>
               <GhostButton type="button" onClick={() => moveTo(1)} className="w-[104px] shrink-0" disabled={saving}>

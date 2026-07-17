@@ -8,16 +8,16 @@ describe("IVR Call and Webhook Handling", () => {
       patientName: "Kamla",
       time: "20:00",
       meds: [
-        { brandName: "Glycomet 500", count: 1, form: "tablet" },
-        { brandName: "Warf 5", count: 1, form: "tablet" },
+        { brandName: "Glycomet 500", doseInstruction: "एक गोली" },
+        { brandName: "Warf 5", doseInstruction: "एक गोली" },
       ],
       foodRelation: "after_food",
       language: "hi",
       caregiverName: "Priya",
     });
 
-    expect(scripts.greetingMedlist).toContain("Glycomet 500 की एक गोली");
-    expect(scripts.greetingMedlist).toContain("Warf 5 की एक गोली");
+    expect(scripts.greetingMedlist).toContain("Glycomet 500: एक गोली");
+    expect(scripts.greetingMedlist).toContain("Warf 5: एक गोली");
     expect(scripts.greetingMedlist).toContain("खाने के बाद");
     expect(scripts.greetingMedlist).not.toMatch(/शुगर|बीपी|बीमारी/);
   });
@@ -26,13 +26,26 @@ describe("IVR Call and Webhook Handling", () => {
     const scripts = buildReminderScripts({
       patientName: "Kamla",
       time: "08:00",
-      meds: [{ brandName: "Telma 40", count: 1, form: "tablet" }],
+      meds: [{ brandName: "Telma 40", doseInstruction: "1 tablet" }],
       foodRelation: "any",
       language: "en",
     });
 
     expect(scripts.thanks).toContain("doctor or pharmacist");
     expect(scripts.goodbyeNoinput).toContain("doctor or pharmacist");
+  });
+
+  it("uses verified wording instead of guessing a tablet or liquid dose", () => {
+    const scripts = buildReminderScripts({
+      patientName: "Kamla",
+      time: "08:00",
+      meds: [{ brandName: "Syrup X", doseInstruction: "7.5 mL" }],
+      foodRelation: "any",
+      language: "en",
+    });
+
+    expect(scripts.greetingMedlist).toContain("Syrup X: 7.5 mL");
+    expect(scripts.greetingMedlist).not.toContain("5 ml");
   });
 
   it("keeps a patient's language for the Twilio <Say> fallback when cached audio is unavailable", () => {

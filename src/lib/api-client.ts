@@ -38,19 +38,23 @@ function isErrorEnvelope(value: unknown): value is { error: { code?: string; mes
   return !!error && typeof error === "object";
 }
 
-export async function apiGet<T>(url: string): Promise<T> {
-  return handle<T>(await fetch(url, { cache: "no-store" }));
+export async function apiGet<T>(url: string, options?: { signal?: AbortSignal }): Promise<T> {
+  return handle<T>(await fetch(url, { cache: "no-store", signal: options?.signal }));
 }
 
 export async function apiJson<T>(
   url: string,
   method: "POST" | "PATCH" | "DELETE",
   body?: unknown,
+  options?: { headers?: HeadersInit },
 ): Promise<T> {
   return handle<T>(
     await fetch(url, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: {
+        ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(options?.headers ?? {}),
+      },
       body: body ? JSON.stringify(body) : undefined,
     }),
   );

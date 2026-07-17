@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { buildReminderScripts } from "@/lib/ivr/scripts";
-import { CALL_LANGUAGE_CODES, callLanguageMeta, twilioVoiceLocale } from "@/lib/languages";
+import {
+  APP_LANGUAGE_CODES,
+  appLanguageMeta,
+  CALL_LANGUAGE_CODES,
+  callLanguageMeta,
+  isSmsReminderLanguage,
+  twilioVoiceLocale,
+} from "@/lib/languages";
 import { voiceSampleScript } from "@/lib/voice-samples";
 
 describe("global reminder languages", () => {
+  it("has metadata for every app interface language", () => {
+    for (const language of APP_LANGUAGE_CODES) {
+      expect(appLanguageMeta(language).nativeName).toBeTruthy();
+      expect(appLanguageMeta(language).shortLabel).toMatch(/^\S{2,4}$/);
+    }
+  });
+
   it("has metadata for every supported language", () => {
     for (const language of CALL_LANGUAGE_CODES) {
       expect(callLanguageMeta(language).nativeName).toBeTruthy();
@@ -16,11 +30,16 @@ describe("global reminder languages", () => {
     expect(twilioVoiceLocale("fr")).toBe("fr-FR");
   });
 
+  it("does not enable an unreviewed SMS language simply because voice supports it", () => {
+    expect(isSmsReminderLanguage("hi")).toBe(true);
+    expect(isSmsReminderLanguage("sw")).toBe(false);
+  });
+
   it("builds a complete Swahili reminder script with the safety instruction", () => {
     const scripts = buildReminderScripts({
       patientName: "Amina",
       time: "20:00",
-      meds: [{ brandName: "Telma 40", count: 1, form: "tablet" }],
+      meds: [{ brandName: "Telma 40", doseInstruction: "kidonge kimoja" }],
       foodRelation: "after_food",
       language: "sw",
     });
