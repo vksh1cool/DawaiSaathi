@@ -44,7 +44,7 @@ export async function createSupabaseServerClient() {
  */
 export async function getSupabaseUserId(): Promise<string | null> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.getClaims();
-  if (error || !data?.claims.sub || typeof data.claims.sub !== "string") return null;
-  return data.claims.sub;
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data?.user?.id) return null;
+  return data.user.id;
 }

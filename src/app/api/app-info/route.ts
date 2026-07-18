@@ -20,6 +20,7 @@ export const GET = withErrorBoundary(async () => {
       authMode: "supabase",
       signedIn: !!userId,
       tenantRuntimeReady: supabaseTenantRuntimeReady(),
+      phoneAuthEnabled: config.supabasePhoneAuthEnabled,
     });
   }
 
@@ -31,5 +32,6 @@ export const GET = withErrorBoundary(async () => {
     authMode: "access_gate",
     signedIn: true,
     tenantRuntimeReady: false,
+    phoneAuthEnabled: false,
   });
 });

@@ -73,6 +73,9 @@ const schema = z.object({
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_ANON_KEY: z.string().trim().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().trim().optional(),
+  // Supabase phone OTP requires an SMS provider or Send SMS Hook in the
+  // Supabase project. Keep it off until that delivery path is configured.
+  SUPABASE_PHONE_AUTH_ENABLED: bool(false),
   // Authentication and the tenant data adapter have separate rollout gates.
   // This must remain false until the migration/RLS test suite and every
   // patient-data route are on the Supabase path.
@@ -200,6 +203,7 @@ export const config = {
   // Server-only. It is intentionally never exposed through a NEXT_PUBLIC_
   // variable and normal household requests must continue to use RLS.
   supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
+  supabasePhoneAuthEnabled: env.SUPABASE_PHONE_AUTH_ENABLED,
   supabaseTenantRuntimeReady: env.SUPABASE_TENANT_RUNTIME_READY,
   requireAccessGate: env.REQUIRE_ACCESS_GATE,
   openfdaApiKey: env.OPENFDA_API_KEY,

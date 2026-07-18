@@ -2,7 +2,7 @@ import type { Patient, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { config } from "@/lib/config";
 import { logger } from "@/lib/logger";
-import { sendReminderSms } from "@/lib/twilio";
+import { sendReminderSms } from "@/lib/integrations/twilio";
 import { isSmsReminderLanguage, type CallLanguage } from "@/lib/languages";
 
 /** Bump when the user-facing SMS consent text materially changes. */

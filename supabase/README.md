@@ -23,7 +23,7 @@ One Twilio sender number may be shared across MVP users. That does not make thei
 ## First-time setup
 
 1. Complete Supabase MCP OAuth in the agent/client that reads `.mcp.json`, then select or create the target project in the required data region.
-2. In Supabase Auth, enable the chosen caregiver sign-in methods. The app supports phone OTP and email magic links. Start with a restricted staff/synthetic cohort; configure CAPTCHA/rate limits, regional SMS delivery, recovery, and approved redirect URLs before public signup.
+2. In Supabase Auth, enable the chosen caregiver sign-in methods. The app supports email magic links by default. Phone OTP remains hidden unless `SUPABASE_PHONE_AUTH_ENABLED=true`; enable that flag only after Supabase Auth has regional SMS delivery, CAPTCHA/rate limits, recovery, and approved redirect URLs configured for a restricted staff/synthetic cohort.
 3. Link the CLI to that project and apply the migration:
 
    ```bash
@@ -51,6 +51,7 @@ The migration intentionally does **not** enable the feature flags in wrangler.js
 
 - **AUTH_DRIVER=access_gate** is the current isolated demo mode.
 - **AUTH_DRIVER=supabase** turns on caregiver authentication and safe, tenant-scoped onboarding/invitation acceptance.
+- **SUPABASE_PHONE_AUTH_ENABLED=false** keeps the login page email-first and blocks phone OTP requests before Supabase is called. Set it to `true` only after Supabase Auth SMS delivery is configured for this project.
 - **SUPABASE_TENANT_RUNTIME_READY=false** is a hard safety gate. While false, every medicine-data page/API is blocked rather than falling through to the legacy global D1 resolver.
 - The legacy Prisma/D1 adapter also fails closed whenever **AUTH_DRIVER=supabase**. This protects against an accidental **SUPABASE_TENANT_RUNTIME_READY=true** flip while a route still has not been migrated.
 - `src/lib/tenant-cutover.ts` keeps explicit pending route lists for workspace pages and health-data APIs. A route is not unlocked for Supabase users until its pending entry is removed with the matching RLS-scoped adapter.

@@ -1,4 +1,4 @@
-import { readWebhook, audioUrl, twilio, voiceLocale } from "@/lib/twilio";
+import { readWebhook, audioUrl, twilio, voiceLocale } from "@/lib/integrations/twilio";
 import { handleGatherResult, getAudioSet } from "@/lib/calls";
 import { legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
 import { config } from "@/lib/config";

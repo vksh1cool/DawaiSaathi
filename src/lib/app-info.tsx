@@ -10,6 +10,7 @@ export type AppInfo = {
   authMode?: "access_gate" | "supabase";
   signedIn?: boolean;
   tenantRuntimeReady?: boolean;
+  phoneAuthEnabled?: boolean;
 };
 
 const AppInfoContext = createContext<{

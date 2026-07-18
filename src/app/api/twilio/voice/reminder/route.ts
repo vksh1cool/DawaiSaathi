@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { readWebhook, audioUrl, twilio, voiceLocale } from "@/lib/twilio";
+import { readWebhook, audioUrl, twilio, voiceLocale } from "@/lib/integrations/twilio";
 import { getAudioSet } from "@/lib/calls";
 import { legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
 import { config } from "@/lib/config";

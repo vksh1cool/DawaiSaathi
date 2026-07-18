@@ -5,7 +5,7 @@ import { config } from "@/lib/config";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { ensureAudio } from "@/lib/tts";
-import { placeCall } from "@/lib/twilio";
+import { placeCall } from "@/lib/integrations/twilio";
 import { buildReminderScripts } from "@/lib/ivr/scripts";
 import { getSlotMedsForEvents } from "@/lib/reminder";
 import { getHousehold } from "@/lib/household";

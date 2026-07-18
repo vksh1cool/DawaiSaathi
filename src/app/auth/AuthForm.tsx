@@ -13,9 +13,15 @@ const RESEND_SECONDS = 60;
 type Method = "phone" | "email";
 type Step = "details" | "code" | "emailSent";
 
-export function AuthForm({ nextPath }: { nextPath: string }) {
+export function AuthForm({
+  nextPath,
+  phoneAuthEnabled,
+}: {
+  nextPath: string;
+  phoneAuthEnabled: boolean;
+}) {
   const { t } = useI18n();
-  const [method, setMethod] = useState<Method>("phone");
+  const [method, setMethod] = useState<Method>("email");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -31,6 +37,15 @@ export function AuthForm({ nextPath }: { nextPath: string }) {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [resendAt]);
+
+  useEffect(() => {
+    if (!phoneAuthEnabled && method === "phone") {
+      setMethod("email");
+      setStep("details");
+      setCode("");
+      setError(null);
+    }
+  }, [method, phoneAuthEnabled]);
 
   const secondsRemaining = resendAt ? Math.max(0, Math.ceil((resendAt - now) / 1000)) : 0;
   const identifier = method === "phone" ? phone.trim() : email.trim().toLowerCase();
@@ -93,6 +108,7 @@ export function AuthForm({ nextPath }: { nextPath: string }) {
   }
 
   function changeMethod(next: Method) {
+    if (next === "phone" && !phoneAuthEnabled) return;
     setMethod(next);
     setStep("details");
     setCode("");
@@ -125,24 +141,26 @@ export function AuthForm({ nextPath }: { nextPath: string }) {
     <form className="mt-7 space-y-5" onSubmit={submit} noValidate>
       {step === "details" && (
         <>
-          <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-bg)] p-1" role="group" aria-label={t("auth.signInMethod")}>
-            <button
-              type="button"
-              aria-pressed={method === "phone"}
-              onClick={() => changeMethod("phone")}
-              className={`pressable flex min-h-[44px] items-center justify-center gap-2 rounded-[10px] px-3 text-sm font-semibold transition-[transform,background-color,color] duration-150 ease-[var(--ease-out)] ${method === "phone" ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-muted)]"}`}
-            >
-              <Smartphone size={17} /> {t("auth.phone")}
-            </button>
-            <button
-              type="button"
-              aria-pressed={method === "email"}
-              onClick={() => changeMethod("email")}
-              className={`pressable flex min-h-[44px] items-center justify-center gap-2 rounded-[10px] px-3 text-sm font-semibold transition-[transform,background-color,color] duration-150 ease-[var(--ease-out)] ${method === "email" ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-muted)]"}`}
-            >
-              <Mail size={17} /> {t("auth.email")}
-            </button>
-          </div>
+          {phoneAuthEnabled ? (
+            <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-bg)] p-1" role="group" aria-label={t("auth.signInMethod")}>
+              <button
+                type="button"
+                aria-pressed={method === "email"}
+                onClick={() => changeMethod("email")}
+                className={`pressable flex min-h-[44px] items-center justify-center gap-2 rounded-[10px] px-3 text-sm font-semibold transition-[transform,background-color,color] duration-150 ease-[var(--ease-out)] ${method === "email" ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-muted)]"}`}
+              >
+                <Mail size={17} /> {t("auth.email")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={method === "phone"}
+                onClick={() => changeMethod("phone")}
+                className={`pressable flex min-h-[44px] items-center justify-center gap-2 rounded-[10px] px-3 text-sm font-semibold transition-[transform,background-color,color] duration-150 ease-[var(--ease-out)] ${method === "phone" ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-muted)]"}`}
+              >
+                <Smartphone size={17} /> {t("auth.phone")}
+              </button>
+            </div>
+          ) : null}
 
           <label className="block" htmlFor="caregiver-identifier">
             <span className="mb-2 block text-sm font-semibold text-[var(--color-text)]">

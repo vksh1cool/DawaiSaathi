@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { AppError, withErrorBoundary } from "@/lib/errors";
+import { config } from "@/lib/config";
 import { usesSupabaseAuth } from "@/lib/cloudflare-runtime";
 import { safeInternalPath } from "@/lib/safe-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -29,6 +30,10 @@ export const POST = withErrorBoundary(async (request: Request) => {
   }
 
   const { phone, email, next } = bodySchema.parse(await request.json());
+  if (phone && !config.supabasePhoneAuthEnabled) {
+    throw new AppError("VALIDATION", "Phone sign-in is not enabled yet. Use email sign-in for this deployment.");
+  }
+
   const supabase = await createSupabaseServerClient();
   const safeNext = safeInternalPath(next);
   const { error } =

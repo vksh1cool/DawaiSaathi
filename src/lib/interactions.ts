@@ -9,7 +9,7 @@ import {
   interactionZod,
 } from "@/lib/prompts";
 import { findCuratedInteraction } from "@/lib/reference-data";
-import { fetchLabelExcerpts } from "@/lib/openfda";
+import { fetchLabelExcerpts } from "@/lib/integrations/openfda";
 import type { Finding, Severity, FindingSource, EvidenceQuote } from "@/types/domain";
 import { cuid } from "@/lib/util/id";
 

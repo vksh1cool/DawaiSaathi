@@ -1,125 +1,64 @@
-"use client";
-
-import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
-import { ArrowLeft, Filter } from "lucide-react";
+import { Suspense } from "react";
 import { AppShell } from "@/components/AppShell";
-import { AdherenceBar } from "@/components/AdherenceBar";
-import { CallLogRow, CallLog } from "@/components/CallLogRow";
-import { Spinner, Card } from "@/components/ui";
-import { useI18n } from "@/lib/i18n/provider";
-import { apiGet } from "@/lib/api-client";
+import { Spinner } from "@/components/ui";
+import { getPatientOrThrow } from "@/lib/household";
+import { getAdherence } from "@/lib/dose-events";
+import { getSupabaseAdherence } from "@/lib/supabase/dose-events";
+import { usesSupabaseAuth } from "@/lib/cloudflare-runtime";
+import { prisma, parseStringArray } from "@/lib/db";
+import { utcToLocalTime, slotKeyForTime } from "@/lib/util/dates";
+import { getAudioSet } from "@/lib/calls";
+import { HistoryClient } from "./HistoryClient";
+import { T } from "@/components/T";
 
-type Adherence = {
-  confirmationRate: number | null;
-  byDay: { date: string; confirmed: number; notConfirmed: number; pending: number }[];
-};
-type CallFilter = "all" | "confirmed" | "not_confirmed";
-
-export default function HistoryPage() {
-  const { t } = useI18n();
-  const [loading, setLoading] = useState(true);
-  const [adherence, setAdherence] = useState<Adherence | null>(null);
-  const [calls, setCalls] = useState<CallLog[]>([]);
-  const [filter, setFilter] = useState<CallFilter>("all");
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [adhRes, callsRes] = await Promise.all([
-        apiGet<Adherence>("/api/adherence?days=7"),
-        apiGet<{ calls: CallLog[] }>("/api/calls"),
-      ]);
-      setAdherence(adhRes);
-      setCalls(callsRes.calls);
-    } catch {
-      setError(t("history.loadError"));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (loading) {
-    return (
-      <AppShell>
-        <Spinner label={t("common.loading")} />
-      </AppShell>
-    );
+async function getAdherenceData() {
+  if (usesSupabaseAuth()) {
+    return getSupabaseAdherence(7);
   }
+  const patient = await getPatientOrThrow();
+  return getAdherence(patient, 7);
+}
 
-  if (error) {
-    return (
-      <AppShell>
-        <Card tone="warn">
-          <p className="text-sm">{error}</p>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="pressable mt-3 min-h-[48px] rounded-[12px] bg-[var(--color-surface)] px-4 font-semibold text-[var(--color-primary)] transition-transform duration-150 ease-[var(--ease-out)]"
-          >
-            {t("common.tryAgain")}
-          </button>
-        </Card>
-      </AppShell>
-    );
-  }
-
-  const filteredCalls = calls.filter((c) => {
-    if (filter === "confirmed") return c.outcome === "confirmed";
-    if (filter === "not_confirmed") return c.outcome === "not_answered" || c.outcome === "no_input" || c.outcome === "failed";
-    return true;
+async function getCallsData() {
+  const patient = await getPatientOrThrow();
+  const tz = patient.timezone;
+  const calls = await prisma.reminderCall.findMany({
+    where: { patientId: patient.id },
+    orderBy: { createdAt: "desc" },
+    take: 50,
   });
 
+  return calls.map((c) => {
+    const medlist = getAudioSet(c).medlist;
+    const medlistUrl = medlist ? `/api/audio/${medlist}` : null;
+    return {
+      id: c.id,
+      time: utcToLocalTime(c.scheduledAtUtc, tz),
+      slotKey: slotKeyForTime(utcToLocalTime(c.scheduledAtUtc, tz)),
+      mode: c.mode,
+      attempt: c.attempt,
+      twilioStatus: c.twilioStatus,
+      outcome: c.outcome,
+      digitsPressed: c.digitsPressed,
+      doseCount: parseStringArray(c.doseEventIdsJson).length,
+      medlistUrl,
+      createdAt: c.createdAt.toISOString(),
+    };
+  });
+}
+
+async function HistoryDataFetcher() {
+  const [adherence, calls] = await Promise.all([
+    getAdherenceData(),
+    getCallsData()
+  ]);
+  return <HistoryClient adherence={adherence} calls={calls} />;
+}
+
+export default function HistoryPage() {
   return (
-    <AppShell>
-      <div className="mb-6 flex items-center gap-3">
-        <Link
-          href="/"
-          aria-label={t("common.back")}
-          className="pressable flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-bg)] transition-[transform,background-color] duration-150 ease-[var(--ease-out)] active:bg-[var(--color-border)]"
-        >
-          <ArrowLeft size={20} />
-        </Link>
-        <h1 className="text-2xl font-bold">{t("home.history")}</h1>
-      </div>
-
-      {adherence && (
-        <Card className="mb-6">
-          <AdherenceBar confirmationRate={adherence.confirmationRate} byDay={adherence.byDay} />
-        </Card>
-      )}
-
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-semibold">{t("history.callLogs")}</h2>
-        <div className="flex items-center gap-2">
-          <Filter size={16} className="text-[var(--color-text-muted)]" />
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as CallFilter)}
-            className="min-h-[44px] rounded-full bg-[var(--color-bg)] px-3 py-1 text-sm outline-none ring-1 ring-[var(--color-border)] focus:ring-[var(--color-primary)]"
-          >
-            <option value="all">{t("history.filterAll")}</option>
-            <option value="confirmed">{t("history.filterConfirmed")}</option>
-            <option value="not_confirmed">{t("history.filterMissed")}</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        {filteredCalls.length === 0 ? (
-          <div className="py-8 text-center text-sm text-[var(--color-text-muted)]">
-            {t("history.empty")}
-          </div>
-        ) : (
-          filteredCalls.map((log) => <CallLogRow key={log.id} log={log} />)
-        )}
-      </div>
-    </AppShell>
-  );
+    <Suspense fallback={<AppShell><Spinner label={<T k="common.loading" />} /></AppShell>}>
+      <HistoryDataFetcher />
+    </Suspense>
+  )
 }

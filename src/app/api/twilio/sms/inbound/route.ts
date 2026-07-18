@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
 import { logger } from "@/lib/logger";
-import { readWebhook } from "@/lib/twilio";
+import { readWebhook } from "@/lib/integrations/twilio";
 
 export const runtime = "nodejs";
 

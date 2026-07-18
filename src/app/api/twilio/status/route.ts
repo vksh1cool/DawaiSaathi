@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { readWebhook } from "@/lib/twilio";
+import { readWebhook } from "@/lib/integrations/twilio";
 import { finalizeUnconfirmed } from "@/lib/calls";
 import { legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
 import { logger } from "@/lib/logger";
