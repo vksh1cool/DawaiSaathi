@@ -174,6 +174,12 @@ async function protectWithSupabase(request: NextRequest): Promise<NextResponse> 
 }
 
 export async function middleware(request: NextRequest) {
+  if (request.nextUrl.hostname.endsWith(".pages.dev")) {
+    const url = request.nextUrl.clone();
+    url.hostname = "dawaisaathi.vksh1cool.workers.dev";
+    return NextResponse.redirect(url);
+  }
+
   if (usesSupabaseAuth()) return protectWithSupabase(request);
 
   if (!accessGateEnabled() || isAccessGatePublicPath(request.nextUrl.pathname)) {

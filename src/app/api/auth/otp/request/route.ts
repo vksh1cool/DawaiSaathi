@@ -46,7 +46,7 @@ export const POST = withErrorBoundary(async (request: Request) => {
           email: email!,
           options: {
             shouldCreateUser: true,
-            emailRedirectTo: new URL("/auth/callback?next=" + encodeURIComponent(safeNext), request.url).toString(),
+            emailRedirectTo: new URL("/auth/callback?next=" + encodeURIComponent(safeNext), "https://dawaisaathi.pages.dev").toString(),
           },
         });
   if (error) {
