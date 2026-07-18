@@ -4,7 +4,6 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-16",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": false,
 
   // OpenNext writes these static assets during `npm run cf:build`.
   "assets": {
