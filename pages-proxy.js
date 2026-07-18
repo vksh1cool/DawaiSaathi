@@ -3,10 +3,7 @@ export default {
     const url = new URL(request.url);
     url.hostname = "dawaisaathi.vksh1cool.workers.dev";
     
-    // Create a new request with the updated URL
-    const proxyRequest = new Request(url.toString(), request);
-    
-    // Fetch from the worker and return the response
-    return fetch(proxyRequest);
+    // Pass the request directly to fetch, which is the safest way to proxy in Cloudflare
+    return fetch(url.toString(), request);
   },
 };
