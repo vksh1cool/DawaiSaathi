@@ -19,6 +19,8 @@ export function smsReminderBody(language: CallLanguage): string | null {
   switch (language) {
     case "hi":
       return "DawaiSaathi: कृपया अपनी दवाई की योजना जाँचें। मदद चाहिए तो देखभाल करने वाले, डॉक्टर या फार्मासिस्ट से बात करें। SMS बंद करने के लिए STOP लिखें।";
+    case "bn":
+      return "DawaiSaathi: আপনার দওয়ার পরিকল্পনা দেখুন। সাহায্যের প্রয়োজন যত্নশীল, ডাক্তার, বা ফার্মাসিস্টের সাথে কথা বলুন। SMS বন্ধ করতে STOP লিখুন।";
     case "en":
       return "DawaiSaathi: Please check your medicine plan. If you need help, contact your caregiver, doctor, or pharmacist. Reply STOP to stop SMS.";
     default:

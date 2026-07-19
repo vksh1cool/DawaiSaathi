@@ -7,7 +7,7 @@
  * <Say> locale must use generated audio for a live phone call rather than
  * silently being read in an unrelated language.
  */
-export const APP_LANGUAGE_CODES = ["en", "hi", "es"] as const;
+export const APP_LANGUAGE_CODES = ["en", "hi", "es", "bn", "ta", "te", "mr", "gu"] as const;
 export type AppLanguage = (typeof APP_LANGUAGE_CODES)[number];
 
 export type AppLanguageMeta = {
@@ -38,6 +38,41 @@ export const APP_LANGUAGES: readonly AppLanguageMeta[] = [
     nativeName: "Español",
     englishName: "Spanish",
     shortLabel: "ES",
+    direction: "ltr",
+  },
+  {
+    code: "bn",
+    nativeName: "বাংলা",
+    englishName: "Bengali",
+    shortLabel: "বা",
+    direction: "ltr",
+  },
+  {
+    code: "ta",
+    nativeName: "தமிழ்",
+    englishName: "Tamil",
+    shortLabel: "தம",
+    direction: "ltr",
+  },
+  {
+    code: "te",
+    nativeName: "తెలుగు",
+    englishName: "Telugu",
+    shortLabel: "తె",
+    direction: "ltr",
+  },
+  {
+    code: "mr",
+    nativeName: "मराठी",
+    englishName: "Marathi",
+    shortLabel: "मर",
+    direction: "ltr",
+  },
+  {
+    code: "gu",
+    nativeName: "ગુજરાતી",
+    englishName: "Gujarati",
+    shortLabel: "ગુ",
     direction: "ltr",
   },
 ] as const;
@@ -78,7 +113,7 @@ export const CALL_LANGUAGE_CODES = [
 ] as const;
 export type CallLanguage = (typeof CALL_LANGUAGE_CODES)[number];
 /** Reviewed, low-information SMS templates currently exist only in these languages. */
-export const SMS_REMINDER_LANGUAGE_CODES = ["en", "hi"] as const;
+export const SMS_REMINDER_LANGUAGE_CODES = ["en", "hi", "bn"] as const;
 export type SmsReminderLanguage = (typeof SMS_REMINDER_LANGUAGE_CODES)[number];
 export type TwilioVoiceLocale = "en-IN" | "hi-IN" | "bn-IN" | "ar-XA" | "fr-FR" | "pt-PT" | "af-ZA" | "am-ET" | "es-US";
 
