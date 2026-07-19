@@ -30,6 +30,7 @@ import {
 } from "@/lib/onboarding";
 import { isSmsReminderLanguage, speechLocale, type CallLanguage } from "@/lib/languages";
 import { voiceSampleScript } from "@/lib/voice-samples";
+import { applyGenderedVoice, getSpeechVoices } from "@/lib/speech";
 
 type VoiceGender = "female" | "male";
 type ReminderFor = "self" | "other";
@@ -106,9 +107,13 @@ export default function OnboardingPage() {
       return;
     }
 
+    const locale = speechLocale(language);
     const utterance = new SpeechSynthesisUtterance(voiceSampleScript(language, name));
-    utterance.lang = speechLocale(language);
+    utterance.lang = locale;
     utterance.rate = 0.88;
+    // Honour the female/male choice: the device fallback otherwise plays the
+    // same OS default voice for both, making the toggle inaudible.
+    applyGenderedVoice(utterance, locale, voice, getSpeechVoices());
     utterance.onend = () => {
       if (requestId === previewRequestRef.current) setPreviewing(false);
     };

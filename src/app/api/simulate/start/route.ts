@@ -30,6 +30,13 @@ export const POST = withErrorBoundary(async (req: Request) => {
 
   return NextResponse.json({
     reminderCallId: result.reminderCallId,
-    audio: { ...result.audioUrls, language: result.audioSet.language, fallback: result.audioSet.fallback },
+    audio: {
+      ...result.audioUrls,
+      language: result.audioSet.language,
+      // Lets the in-browser fallback voice match the patient's chosen gender
+      // when generated audio is unavailable.
+      voiceGender: patient.voiceGender,
+      fallback: result.audioSet.fallback,
+    },
   });
 });

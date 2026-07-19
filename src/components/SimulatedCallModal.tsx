@@ -6,11 +6,13 @@ import { ModalDialog } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/provider";
 import { apiJson } from "@/lib/api-client";
 import { speechLocale, type CallLanguage } from "@/lib/languages";
+import { applyGenderedVoice, getSpeechVoices, type SpeechGender } from "@/lib/speech";
 
 type StartResponse = {
   reminderCallId: string;
   audio: {
     language: CallLanguage;
+    voiceGender: SpeechGender;
     medlistUrl: string | null;
     menuUrl: string | null;
     thanksUrl: string | null;
@@ -88,9 +90,13 @@ export function SimulatedCallModal({
       return;
     }
 
+    const locale = speechLocale(callRef.current?.audio.language ?? "en");
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = speechLocale(callRef.current?.audio.language ?? "en");
+    utterance.lang = locale;
     utterance.rate = 0.9;
+    // Keep the simulated call's fallback voice matching the patient's chosen
+    // gender rather than defaulting to a single OS voice for both.
+    applyGenderedVoice(utterance, locale, callRef.current?.audio.voiceGender ?? "female", getSpeechVoices());
     utterance.onend = complete;
     utterance.onerror = complete;
     window.speechSynthesis.cancel();
