@@ -27,7 +27,7 @@ export function AdherenceBar({ confirmationRate, byDay }: { confirmationRate: nu
         </span>
         <span className="flex items-center gap-2 text-sm font-semibold">
           {streak >= 2 && (
-            <span className="rounded-full bg-[var(--color-success-soft)] px-2 py-0.5 text-xs font-bold text-[var(--color-success)]">
+            <span className={`rounded-full bg-[var(--color-success-soft)] px-2 py-0.5 text-xs font-bold text-[var(--color-success)] ${streak >= 3 ? "animate-streak-glow" : ""}`}>
               🔥 {t("home.streak", { n: streak })}
             </span>
           )}

@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Play, Check } from "lucide-react";
+import { Play, Check, Camera } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { EmptyState } from "@/components/EmptyState";
 import { ScheduleCard, type ScheduleDraft } from "@/components/ScheduleCard";
 import { PrimaryButton, GhostButton, Banner, ModalDialog, Spinner, TextInput } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/provider";
@@ -256,12 +257,15 @@ export default function SchedulePage() {
     return (
       <AppShell>
         <h1 className="mb-4 text-2xl font-bold">{t("schedule.title")}</h1>
-        <Banner tone="info">
-          <p>{t("schedule.empty")}</p>
-          <Link href="/scan" className="mt-3 inline-block">
-            <PrimaryButton>{t("schedule.goToScan")}</PrimaryButton>
-          </Link>
-        </Banner>
+        <EmptyState
+          icon={Camera}
+          title={t("schedule.empty")}
+          action={
+            <Link href="/scan" className="inline-block">
+              <PrimaryButton>{t("schedule.goToScan")}</PrimaryButton>
+            </Link>
+          }
+        />
       </AppShell>
     );
   }
