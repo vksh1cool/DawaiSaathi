@@ -113,7 +113,12 @@
     "caregiverName": "Your name",
     "lang_hi": "Hindi",
     "lang_en": "English",
-    "lang_es": "Spanish"
+    "lang_es": "Spanish",
+    "lang_bn": "Bengali",
+    "lang_ta": "Tamil",
+    "lang_te": "Telugu",
+    "lang_mr": "Marathi",
+    "lang_gu": "Gujarati"
   },
   "home": {
     "today": "Today",
@@ -304,6 +309,12 @@
     "audioPreview": "Call audio",
     "loadError": "We couldn't load your history. Please try again.",
     "audioUnavailable": "This call audio could not be played."
+  },
+  "medications": {
+    "title": "Medications",
+    "empty": "No medications yet. Scan a strip to get started.",
+    "archiveConfirm": "Archive {name} and stop its reminders?",
+    "archived": "Archived"
   },
   "profile": {
     "title": "Profile & settings",

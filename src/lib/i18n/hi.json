@@ -113,7 +113,12 @@
     "caregiverName": "आपका नाम",
     "lang_hi": "हिंदी",
     "lang_en": "अंग्रेज़ी",
-    "lang_es": "स्पैनिश"
+    "lang_es": "स्पैनिश",
+    "lang_bn": "बंगाली",
+    "lang_ta": "तमिल",
+    "lang_te": "तेलुगु",
+    "lang_mr": "मराठी",
+    "lang_gu": "गुजराती"
   },
   "home": {
     "today": "आज",
@@ -304,6 +309,12 @@
     "audioPreview": "कॉल की आवाज़",
     "loadError": "आपका इतिहास लोड नहीं हो पाया। फिर कोशिश करें।",
     "audioUnavailable": "इस कॉल की आवाज़ नहीं चलाई जा सकी।"
+  },
+  "medications": {
+    "title": "Medications",
+    "empty": "No medications yet. Scan a strip to get started.",
+    "archiveConfirm": "Archive {name} and stop its reminders?",
+    "archived": "Archived"
   },
   "profile": {
     "title": "प्रोफ़ाइल और सेटिंग्स",
