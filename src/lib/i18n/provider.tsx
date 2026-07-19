@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { isAppLanguage, type AppLanguage } from "@/lib/languages";
+import { isAppLanguage, appLanguageMeta, type AppLanguage } from "@/lib/languages";
 import { translate, type TFunction } from "./index";
 
 type I18nContextValue = {
@@ -24,9 +24,12 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     if (isAppLanguage(saved)) setLangState(saved);
   }, []);
 
-  // Keep <html lang> in sync (drives Devanagari font sizing in globals.css).
+  // Keep <html lang> and <html dir> in sync (drives Devanagari font sizing and RTL layout).
   useEffect(() => {
-    if (typeof document !== "undefined") document.documentElement.lang = lang;
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = lang;
+      document.documentElement.dir = appLanguageMeta(lang).direction;
+    }
   }, [lang]);
 
   const setLang = useCallback((next: AppLanguage) => {

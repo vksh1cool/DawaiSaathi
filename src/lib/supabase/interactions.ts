@@ -1,7 +1,7 @@
 import "server-only";
 
 import { AppError } from "@/lib/errors";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, getSupabaseUserId } from "@/lib/supabase/server";
 import { getSupabaseHousehold, type TenantHousehold } from "@/lib/supabase/household";
 import { supabaseDatabaseError } from "@/lib/supabase/errors";
 import { parseEvidence } from "@/lib/db";
@@ -30,6 +30,8 @@ const databaseError = supabaseDatabaseError;
 type SupabaseClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
 async function requireTenant(client: SupabaseClient): Promise<TenantHousehold & { patient: NonNullable<TenantHousehold["patient"]> }> {
+  const userId = await getSupabaseUserId();
+  if (!userId) throw new AppError("UNAUTHORIZED", "Caregiver sign-in is required.");
   const household = await getSupabaseHousehold(client);
   if (!household?.patient) {
     throw new AppError("NOT_FOUND", "No household set up yet. Complete onboarding first.");

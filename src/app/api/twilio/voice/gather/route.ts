@@ -1,13 +1,14 @@
 import { readWebhook, audioUrl, twilio, voiceLocale } from "@/lib/integrations/twilio";
 import { handleGatherResult, getAudioSet } from "@/lib/calls";
 import { legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
+import { withErrorBoundary } from "@/lib/errors";
 import { config } from "@/lib/config";
 import type { CallLanguage, TwilioVoiceLocale } from "@/lib/languages";
 
 export const runtime = "nodejs";
 
 /** POST /api/twilio/voice/gather — route the keypress (Arch §10.4). */
-export async function POST(req: Request) {
+export const POST = withErrorBoundary(async (req: Request) => {
   const { params, valid } = await readWebhook(req);
   if (!valid) return new Response("invalid signature", { status: 403 });
 
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
     vr.hangup();
   }
   return xml(vr);
-}
+});
 
 async function appendClip(
   vr: InstanceType<typeof twilio.twiml.VoiceResponse>,
