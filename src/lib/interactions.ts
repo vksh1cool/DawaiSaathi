@@ -12,6 +12,8 @@ import { findCuratedInteraction } from "@/lib/reference-data";
 import { fetchLabelExcerpts } from "@/lib/integrations/openfda";
 import type { Finding, Severity, FindingSource, EvidenceQuote } from "@/types/domain";
 import { cuid } from "@/lib/util/id";
+import { usesSupabaseAuth } from "@/lib/cloudflare-runtime";
+import { getPatientOrThrow } from "@/lib/household";
 
 export type MedSalt = { medId: string; brand: string; inn: string; fdaSearchName: string };
 
@@ -309,3 +311,48 @@ export function serializeFinding(row: NonNullable<StoredFinding>, brandMap: Map<
     acknowledged: row.acknowledged,
   };
 }
+
+export const InteractionsRepository = {
+  async listFindings() {
+    if (usesSupabaseAuth()) {
+      const { listSupabaseInteractionFindings } = await import("@/lib/supabase/interactions");
+      return await listSupabaseInteractionFindings();
+    }
+    const patient = await getPatientOrThrow();
+    const [rows, meds] = await Promise.all([
+      prisma.interactionFinding.findMany({
+        where: { patientId: patient.id },
+        orderBy: [{ acknowledged: "asc" }, { createdAt: "desc" }],
+      }),
+      prisma.medication.findMany({
+        where: { patientId: patient.id },
+        select: { id: true, brandName: true },
+      }),
+    ]);
+    const brandMap = new Map(meds.map((m) => [m.id, m.brandName]));
+    const findings = rows.map((r) => serializeFinding(r, brandMap));
+    const lastRunAt = rows[0]?.createdAt ?? null;
+    return { findings, lastRunAt };
+  },
+
+  async acknowledgeFinding(id: string) {
+    if (usesSupabaseAuth()) {
+      const { acknowledgeSupabaseInteractionFinding } = await import("@/lib/supabase/interactions");
+      return await acknowledgeSupabaseInteractionFinding(id);
+    }
+    const patient = await getPatientOrThrow();
+    const row = await prisma.interactionFinding.findFirst({ where: { id, patientId: patient.id } });
+    if (!row) throw new AppError("NOT_FOUND", "Finding not found.");
+
+    const updated = await prisma.interactionFinding.update({
+      where: { id },
+      data: { acknowledged: true, acknowledgedAt: new Date() },
+    });
+    const meds = await prisma.medication.findMany({
+      where: { patientId: patient.id },
+      select: { id: true, brandName: true },
+    });
+    const brandMap = new Map(meds.map((m) => [m.id, m.brandName]));
+    return serializeFinding(updated, brandMap);
+  },
+};

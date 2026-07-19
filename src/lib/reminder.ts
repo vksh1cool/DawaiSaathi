@@ -56,7 +56,7 @@ export async function getSlotMedsForEvents(doseEventIds: string[]): Promise<Slot
 }
 
 export async function buildSlotScripts(
-  patient: Patient,
+  patient: Pick<Patient, "name" | "language" | "voiceGender">,
   time: string,
   slot: SlotMeds,
 ): Promise<ReminderScripts> {

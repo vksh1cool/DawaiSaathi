@@ -7,22 +7,11 @@
 export const SUPABASE_STAGING_PATHS = ["/onboarding", "/invite", "/secure-setup"] as const;
 export const SUPABASE_STAGING_API_PATHS = ["/api/household"] as const;
 
-export const SUPABASE_PENDING_WORKSPACE_PATHS = [
-  "/",
-  "/history",
-  "/safety",
-  "/savings",
-  "/scan",
-  "/schedule",
-] as const;
+export const SUPABASE_PENDING_WORKSPACE_PATHS = [] as const;
 
 export const SUPABASE_PENDING_HEALTH_API_PATHS = [
   "/api/calls",
-  "/api/demo/seed",
-  "/api/generics",
-  "/api/interactions",
-  "/api/photos",
-  "/api/scan",
+  "/api/interactions/run",
   "/api/simulate",
   "/api/tts/preview",
 ] as const;
@@ -41,7 +30,7 @@ export function hasPendingSupabaseTenantRoutes(): boolean {
 }
 
 export function isPendingSupabaseWorkspacePath(pathname: string): boolean {
-  return pathname === "/" || matchesAnyPath(pathname, SUPABASE_PENDING_WORKSPACE_PATHS.filter((path) => path !== "/"));
+  return matchesAnyPath(pathname, SUPABASE_PENDING_WORKSPACE_PATHS);
 }
 
 export function isPendingSupabaseHealthApiPath(pathname: string): boolean {

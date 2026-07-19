@@ -10,6 +10,7 @@ import { utcToLocalTime, slotKeyForTime } from "@/lib/util/dates";
 import { getAudioSet } from "@/lib/calls";
 import { HistoryClient } from "./HistoryClient";
 import { T } from "@/components/T";
+import { listSupabaseReminderCalls } from "@/lib/supabase/calls";
 
 async function getAdherenceData() {
   if (usesSupabaseAuth()) {
@@ -20,6 +21,9 @@ async function getAdherenceData() {
 }
 
 async function getCallsData() {
+  if (usesSupabaseAuth()) {
+    return listSupabaseReminderCalls();
+  }
   const patient = await getPatientOrThrow();
   const tz = patient.timezone;
   const calls = await prisma.reminderCall.findMany({

@@ -19,12 +19,14 @@ import { getSupabaseAdherence } from "@/lib/supabase/dose-events";
 import { getGenerics } from "@/lib/generics";
 import { listSupabaseAlerts } from "@/lib/supabase/alerts";
 import { prisma } from "@/lib/db";
-import { serializeFinding } from "@/lib/interactions";
+import { InteractionsRepository } from "@/lib/interactions";
 import { serializeMedication } from "@/lib/medications";
 import { getSupabaseUserId } from "@/lib/supabase/server";
 import type { Finding } from "@/types/domain";
+import type { Patient } from "@prisma/client";
 
 import { T } from "@/components/T";
+import { Greeting } from "./Greeting";
 import { PollLiveDoses } from "./PollLiveDoses";
 import { AlertsList } from "./AlertsList";
 import { SavingsBanner } from "./SavingsBanner";
@@ -51,7 +53,6 @@ async function getDashboardData() {
       listSupabaseMedications(),
       getSupabaseToday(),
       getSupabaseAdherence(7).catch(() => null),
-      // Interactions not migrated to Supabase yet? We skip or fallback? Wait, api/interactions just uses prisma always.
       getGenerics(hh.patient?.id ?? "").catch(() => ({ totalMonthlySavingsInr: 0 })),
       listSupabaseAlerts().catch(() => [])
     ]);
@@ -59,16 +60,10 @@ async function getDashboardData() {
     // Interactions
     let openFindings: Finding[] = [];
     if (hh.patient) {
-        const rows = await prisma.interactionFinding.findMany({
-            where: { patientId: hh.patient.id },
-            orderBy: [{ acknowledged: "asc" }, { createdAt: "desc" }],
-        }).catch(() => []);
-        
-        const m = await prisma.medication.findMany({ where: { patientId: hh.patient.id }, select: { id: true, brandName: true } }).catch(() => []);
-        const brandMap = new Map(m.map((med) => [med.id, med.brandName]));
+        const { findings } = await InteractionsRepository.listFindings().catch(() => ({ findings: [] }));
         
         const severityRank: Record<string, number> = { major: 0, moderate: 1, minor: 2, unverified: 3 };
-        openFindings = rows.map((r) => serializeFinding(r, brandMap))
+        openFindings = findings
             .filter((f) => !f.acknowledged)
             .sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
     }
@@ -88,7 +83,8 @@ async function getDashboardData() {
   // Legacy local D1/Postgres
   const hh = await getHousehold();
   if (!hh) redirect("/onboarding");
-  const patient = hh.patients[0];
+  const patient = hh.patients[0] as Patient | undefined;
+  if (!patient) redirect("/onboarding");
 
   const medsRows = await prisma.medication.findMany({
     where: { patientId: patient.id, status: "active" },
@@ -98,7 +94,7 @@ async function getDashboardData() {
   
   const today = await getToday(patient);
 
-  const [adh, gen, alertRows, interRows] = await Promise.all([
+  const [adh, gen, alertRows, { findings }] = await Promise.all([
     getAdherence(patient, 7).catch(() => null),
     getGenerics(patient.id).catch(() => ({ totalMonthlySavingsInr: 0 })),
     prisma.caregiverAlert.findMany({
@@ -106,15 +102,11 @@ async function getDashboardData() {
       orderBy: [{ readAt: "asc" }, { createdAt: "desc" }],
       take: 50,
     }).catch(() => []),
-    prisma.interactionFinding.findMany({
-        where: { patientId: patient.id },
-        orderBy: [{ acknowledged: "asc" }, { createdAt: "desc" }],
-    }).catch(() => [])
+    InteractionsRepository.listFindings().catch(() => ({ findings: [] as Finding[] }))
   ]);
 
-  const brandMap = new Map(medsRows.map((m) => [m.id, m.brandName]));
   const severityRank: Record<string, number> = { major: 0, moderate: 1, minor: 2, unverified: 3 };
-  const openFindings = interRows.map((r) => serializeFinding(r, brandMap))
+  const openFindings = findings
     .filter((f) => !f.acknowledged)
     .sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
 
@@ -161,6 +153,7 @@ async function HomePageDataFetcher() {
 
   return (
     <AppShell safetyBadge={openFindingsCount}>
+      <Greeting name={patientName} />
       {/* Top interaction alert */}
       {topFinding && (
         <Link href="/safety" className="mb-3 block">

@@ -31,7 +31,10 @@ export function CallLanguageSelect({
 
   return (
     <>
-      <div className={`relative flex min-h-[56px] items-center rounded-[14px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 transition-colors focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary)]/15 ${className}`}>
+      <div
+        dir={selected.direction}
+        className={`relative flex min-h-[56px] items-center rounded-[14px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 transition-colors focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary)]/15 ${className}`}
+      >
         <Languages size={20} className="mr-2 shrink-0 text-[var(--color-primary)]" aria-hidden="true" />
         <select
           id={id}
@@ -39,10 +42,10 @@ export function CallLanguageSelect({
           disabled={disabled}
           aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.value as CallLanguage)}
-          className="min-h-[48px] min-w-0 flex-1 appearance-none bg-transparent pr-8 text-left text-base font-semibold text-[var(--color-text)] outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-[48px] min-w-0 flex-1 appearance-none bg-transparent px-1 text-left text-base font-semibold text-[var(--color-text)] outline-none disabled:cursor-not-allowed disabled:opacity-50"
         >
           {CALL_LANGUAGES.map((language) => (
-            <option key={language.code} value={language.code}>
+            <option key={language.code} value={language.code} dir={language.direction}>
               {language.nativeName} — {language.englishName}
             </option>
           ))}

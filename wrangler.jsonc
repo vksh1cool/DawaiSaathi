@@ -86,7 +86,11 @@
     "RETRY_DELAY_MINUTES": "10",
     "MAX_CALL_ATTEMPTS": "3",
     "OPENAI_DAILY_LLM_REQUEST_LIMIT": "50",
-    "OPENAI_DAILY_TTS_GENERATION_LIMIT": "12"
+    "OPENAI_DAILY_TTS_GENERATION_LIMIT": "12",
+    // SHA-256 of the certificate the installed APK is signed with. Cert
+    // fingerprints are public by design (Android publishes them in
+    // assetlinks.json); swap for the release-key fingerprint at launch.
+    "ANDROID_APP_CERT_SHA256": "B7:18:EB:9F:9C:7C:AF:AA:13:25:F2:95:04:8C:CD:69:A9:24:95:8B:91:B4:80:01:E3:5E:D2:63:90:7A:84:AD"
   },
 
   "observability": {

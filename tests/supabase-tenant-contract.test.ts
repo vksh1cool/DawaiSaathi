@@ -2,7 +2,11 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { SUPABASE_PENDING_HEALTH_API_PATHS } from "@/lib/tenant-cutover";
+import {
+  SUPABASE_PENDING_HEALTH_API_PATHS,
+  SUPABASE_PENDING_WORKSPACE_PATHS,
+  isPendingSupabaseWorkspacePath,
+} from "@/lib/tenant-cutover";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const apiRoot = resolve(root, "src/app/api");
@@ -104,6 +108,13 @@ describe("Supabase tenant migration contract", () => {
     for (const route of legacyWebhookRoutes) {
       expect(route).toContain("legacyTenantDataBlocked");
     }
+  });
+
+  it("does not block the onboarded workspace just because background health APIs remain pending", () => {
+    expect(SUPABASE_PENDING_WORKSPACE_PATHS).toEqual([]);
+    expect(SUPABASE_PENDING_HEALTH_API_PATHS.length).toBeGreaterThan(0);
+    expect(isPendingSupabaseWorkspacePath("/")).toBe(false);
+    expect(isPendingSupabaseWorkspacePath("/scan")).toBe(false);
   });
 
   it("tracks every legacy Prisma health API in the Supabase cutover guard", () => {

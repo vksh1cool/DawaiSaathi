@@ -29,7 +29,7 @@ function serializeLegacy(hh: NonNullable<Awaited<ReturnType<typeof getHousehold>
             language: p.language,
             voiceGender: p.voiceGender,
             timezone: p.timezone,
-            smsReminderConsent: !!p.smsReminderConsentAt,
+            smsReminderConsent: 'smsReminderConsentAt' in p ? !!p.smsReminderConsentAt : (p as any).smsReminderConsent,
           }
         : null,
     },
@@ -228,7 +228,7 @@ export const PATCH = withErrorBoundary(async (request: Request) => {
       const consentAction = resolveSmsConsentAction({
         currentPhoneE164: household.patients[0].phoneE164,
         currentLanguage: household.patients[0].language,
-        currentConsent: !!household.patients[0].smsReminderConsentAt,
+        currentConsent: 'smsReminderConsentAt' in household.patients[0] ? !!household.patients[0].smsReminderConsentAt : (household.patients[0] as any).smsReminderConsent,
         requestedPhoneE164: patientPatch.phoneE164,
         requestedLanguage: patientPatch.language,
         requestedConsent: smsReminderConsent,

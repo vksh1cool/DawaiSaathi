@@ -3,8 +3,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import {
-  ArrowLeft,
-  ArrowRight,
   Check,
   CheckCircle2,
   LoaderCircle,
@@ -34,18 +32,41 @@ import { isSmsReminderLanguage, speechLocale, type CallLanguage } from "@/lib/la
 import { voiceSampleScript } from "@/lib/voice-samples";
 
 type VoiceGender = "female" | "male";
+type ReminderFor = "self" | "other";
+
+function initialCallLanguage(appLanguage: string): CallLanguage {
+  if (appLanguage === "en" || appLanguage === "es") return appLanguage;
+  return "hi";
+}
+
+function createSetupKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index++) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+}
 
 export default function OnboardingPage() {
   const { t, lang, setLang } = useI18n();
   const { refresh } = useAppInfo();
 
-  const [step, setStep] = useState(0);
+  const [reminderFor, setReminderFor] = useState<ReminderFor>("self");
   const [caregiverName, setCaregiverName] = useState("");
   const [patientName, setPatientName] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
   const [phoneRegion, setPhoneRegion] = useState<DialingRegionCode>("IN");
-  const [self, setSelf] = useState(false);
-  const [callLang, setCallLang] = useState<CallLanguage>("hi");
+  const [callLang, setCallLang] = useState<CallLanguage>(() => initialCallLanguage(lang));
   const [voice, setVoice] = useState<VoiceGender>("female");
   const [smsReminderConsent, setSmsReminderConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,10 +75,9 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const previewRequestRef = useRef(0);
-  // A repeated POST after a flaky mobile connection must resolve to the same
-  // household when the Supabase tenant path is enabled, not create a duplicate.
   const onboardingIdempotencyKeyRef = useRef<string | null>(null);
 
+  const self = reminderFor === "self";
   const patientDisplayName = self ? caregiverName.trim() : patientName.trim();
   const mobileValid = isValidPhoneInput(mobileNumber, phoneRegion);
   const selectedPhoneRegion = dialingRegion(phoneRegion);
@@ -106,7 +126,7 @@ export default function OnboardingPage() {
     stopPreview();
     const requestId = previewRequestRef.current;
     const selectedLanguage = callLang;
-    const selectedName = patientDisplayName;
+    const selectedName = patientDisplayName || caregiverName.trim() || t("brand.name");
     setPreviewing(true);
     setVoiceStatus(null);
 
@@ -141,20 +161,16 @@ export default function OnboardingPage() {
     }
   };
 
-  const moveTo = (nextStep: number) => {
-    stopPreview();
+  const updateMobile = (value: string) => {
+    setMobileNumber(phoneInputFromValue(value, phoneRegion));
     setError(null);
-    setVoiceStatus(null);
-    setStep(nextStep);
   };
 
-  const validateFirstStep = () => {
-    if (caregiverName.trim()) return true;
-    setError(t("onboarding.nameRequired"));
-    return false;
-  };
-
-  const validatePatientStep = () => {
+  const validate = () => {
+    if (!caregiverName.trim()) {
+      setError(t("onboarding.nameRequired"));
+      return false;
+    }
     if (!self && !patientName.trim()) {
       setError(t("onboarding.patientRequired"));
       return false;
@@ -166,20 +182,23 @@ export default function OnboardingPage() {
     return true;
   };
 
-  const finish = async () => {
-    if (!validateFirstStep()) {
-      setStep(0);
-      return;
-    }
-    if (!validatePatientStep()) {
-      setStep(1);
-      return;
-    }
+  const leaveOnboarding = async () => {
+    const appInfo = await refresh();
+    const destination =
+      appInfo?.authMode === "supabase" && !appInfo.tenantRuntimeReady
+        ? "/secure-setup"
+        : "/";
+    window.location.replace(destination);
+  };
 
+  const finish = async () => {
+    if (!validate()) return;
+
+    stopPreview();
     setSaving(true);
     setError(null);
     try {
-      onboardingIdempotencyKeyRef.current ??= crypto.randomUUID();
+      onboardingIdempotencyKeyRef.current ??= createSetupKey();
       await apiJson("/api/household", "POST", {
         caregiverName: caregiverName.trim(),
         uiLanguage: lang,
@@ -197,8 +216,6 @@ export default function OnboardingPage() {
       await leaveOnboarding();
     } catch (e) {
       if (e instanceof ApiError && e.code === "CONFLICT") {
-        // A completed setup is safer to preserve than to overwrite. This also
-        // recovers cleanly if the user returns to an old onboarding tab.
         await leaveOnboarding();
         return;
       }
@@ -207,57 +224,21 @@ export default function OnboardingPage() {
     }
   };
 
-  const leaveOnboarding = async () => {
-    // Do not navigate against stale app-info. Supabase's staged tenant
-    // rollout deliberately lands on the secure-status screen rather than
-    // flashing the blocked legacy workspace after a successful setup.
-    const appInfo = await refresh();
-    const destination =
-      appInfo?.authMode === "supabase" && !appInfo.tenantRuntimeReady
-        ? "/secure-setup"
-        : "/";
-    window.location.replace(destination);
-  };
-
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (step === 0 && validateFirstStep()) moveTo(1);
-    if (step === 1 && validatePatientStep()) moveTo(2);
-    if (step === 2) void finish();
-  };
-
-  const updateMobile = (value: string) => {
-    setMobileNumber(phoneInputFromValue(value, phoneRegion));
-    setError(null);
+    void finish();
   };
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] max-w-[520px] flex-col bg-[var(--color-bg)] px-5 pb-[calc(1.5rem_+_env(safe-area-inset-bottom))] pt-[calc(1.25rem_+_env(safe-area-inset-top))] sm:px-6">
-      <header className="mb-7 flex items-start justify-between gap-4">
-        <div>
-          <p className="mb-2 text-sm font-medium text-[var(--color-text-muted)]">
-            {t("onboarding.stepProgress", { current: step + 1, total: 3 })}
-          </p>
-          <ol className="flex gap-1.5" aria-label={t("onboarding.progressLabel")}>
-            {[0, 1, 2].map((index) => (
-              <li
-                key={index}
-                className={`h-1.5 rounded-full transition-colors duration-200 ease-[var(--ease-out)] ${
-                  index === step
-                    ? "w-10 bg-[var(--color-primary)]"
-                    : index < step
-                      ? "w-5 bg-[var(--color-primary)]/55"
-                      : "w-5 bg-[var(--color-border)]"
-                }`}
-              >
-                <span className="sr-only">
-                  {t("onboarding.stepProgress", { current: index + 1, total: 3 })}
-                </span>
-              </li>
-            ))}
-          </ol>
+    <main className="mx-auto flex min-h-[100dvh] max-w-[560px] flex-col bg-[var(--color-bg)] px-4 pb-[calc(1.25rem_+_env(safe-area-inset-bottom))] pt-[calc(1rem_+_env(safe-area-inset-top))] sm:px-6">
+      <header className="mb-5 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Image src="/logo.png" alt="" width={44} height={44} className="rounded-[13px]" priority />
+          <div className="min-w-0">
+            <p className="text-lg font-bold text-[var(--color-primary)]">{t("brand.name")}</p>
+            <p className="text-sm text-[var(--color-text-muted)]">{t("onboarding.simpleSetup")}</p>
+          </div>
         </div>
-
         <div className="flex items-center gap-1.5">
           <FeedbackLauncher compact />
           <AppLanguageSelect
@@ -272,18 +253,48 @@ export default function OnboardingPage() {
         </div>
       </header>
 
-      <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit} noValidate>
-        {step === 0 && (
-          <section key="welcome" className="onboarding-step flex flex-1 flex-col">
-            <div className="mb-7">
-              <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-[24px] bg-[var(--color-primary-soft)] p-2">
-                <Image src="/logo.png" alt="DawaiSaathi" width={64} height={64} className="rounded-[18px]" priority />
+      <form className="flex flex-1 flex-col" onSubmit={submit} noValidate>
+        <section className="onboarding-step flex flex-1 flex-col">
+          <div className="mb-5">
+            <p className="mb-2 text-sm font-semibold text-[var(--color-primary)]">{t("onboarding.welcomeEyebrow")}</p>
+            <h1 className="max-w-[14ch] text-4xl font-bold leading-[1.05] text-[var(--color-text)]">
+              {t("onboarding.setupTitle")}
+            </h1>
+            <p className="mt-3 max-w-[42ch] text-base leading-6 text-[var(--color-text-muted)]">{t("onboarding.setupBody")}</p>
+          </div>
+
+          <div className="mb-5 rounded-[16px] border border-[var(--color-primary)]/15 bg-[var(--color-primary-soft)]/45 p-4">
+            <div className="flex items-start gap-3">
+              <ShieldCheck size={20} className="mt-0.5 shrink-0 text-[var(--color-primary)]" aria-hidden="true" />
+              <p className="text-sm leading-5 text-[var(--color-text-muted)]">{t("onboarding.medicinePromise")}</p>
+            </div>
+          </div>
+
+          <div className="space-y-5">
+            <div>
+              <span className="mb-2 block text-sm font-semibold text-[var(--color-text)]">{t("onboarding.reminderFor")}</span>
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("onboarding.reminderFor")}>
+                <ReminderChoice
+                  selected={self}
+                  icon="self"
+                  title={t("onboarding.selfCareShort")}
+                  body={t("onboarding.selfCareHint")}
+                  onClick={() => {
+                    setReminderFor("self");
+                    setError(null);
+                  }}
+                />
+                <ReminderChoice
+                  selected={!self}
+                  icon="other"
+                  title={t("onboarding.careForSomeoneShort")}
+                  body={t("onboarding.careForSomeoneHint")}
+                  onClick={() => {
+                    setReminderFor("other");
+                    setError(null);
+                  }}
+                />
               </div>
-              <p className="mb-2 text-sm font-semibold text-[var(--color-primary)]">{t("onboarding.welcomeEyebrow")}</p>
-              <h1 className="max-w-[18ch] text-3xl font-bold tracking-[-0.03em] text-[var(--color-text)]">
-                {t("onboarding.welcomeTitle")}
-              </h1>
-              <p className="mt-3 max-w-[38ch] leading-6 text-[var(--color-text-muted)]">{t("onboarding.welcomeBody")}</p>
             </div>
 
             <Field label={t("onboarding.yourName")}>
@@ -300,253 +311,198 @@ export default function OnboardingPage() {
               />
             </Field>
 
-            <div className="mt-5 flex items-start gap-3 rounded-[16px] border border-[var(--color-primary)]/15 bg-[var(--color-primary-soft)]/50 p-4 text-sm text-[var(--color-text-muted)]">
-              <ShieldCheck size={20} className="mt-0.5 shrink-0 text-[var(--color-primary)]" aria-hidden="true" />
-              <p>{t("onboarding.privacyNote")}</p>
-            </div>
+            {!self && (
+              <Field label={t("onboarding.patientName")}>
+                <TextInput
+                  autoComplete="name"
+                  value={patientName}
+                  onChange={(event) => {
+                    setPatientName(event.target.value);
+                    setError(null);
+                  }}
+                  placeholder={t("onboarding.patientNamePlaceholder")}
+                  aria-invalid={!!error && !patientName.trim()}
+                />
+              </Field>
+            )}
 
-            <OnboardingFooter error={error}>
-              <PrimaryButton type="submit">
-                {t("common.continue")} <ArrowRight size={18} />
-              </PrimaryButton>
-            </OnboardingFooter>
-          </section>
-        )}
-
-        {step === 1 && (
-          <section key="patient" className="onboarding-step flex flex-1 flex-col">
-            <div className="mb-7">
-              <p className="mb-2 text-sm font-semibold text-[var(--color-primary)]">{t("onboarding.patientEyebrow")}</p>
-              <h1 className="text-3xl font-bold tracking-[-0.03em]">{t("onboarding.patientTitle")}</h1>
-              <p className="mt-3 max-w-[38ch] leading-6 text-[var(--color-text-muted)]">{t("onboarding.patientBody")}</p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label={t("onboarding.patientTitle")}>
-              <button
-                type="button"
-                aria-pressed={self}
-                onClick={() => {
-                  setSelf(true);
-                  setError(null);
-                }}
-                className={`pressable flex min-h-[104px] flex-col items-start rounded-[18px] border p-4 text-left transition-[transform,border-color,background-color] duration-150 ease-[var(--ease-out)] ${
-                  self
-                    ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)]/60"
-                    : "border-[var(--color-border)] bg-[var(--color-surface)]"
-                }`}
-              >
-                <div className="mb-2 flex w-full items-center justify-between">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--color-surface)] text-[var(--color-primary)]">
-                    <User size={18} aria-hidden="true" />
-                  </span>
-                  {self && <CheckCircle2 size={20} className="text-[var(--color-primary)]" aria-hidden="true" />}
-                </div>
-                <span className="font-semibold">{t("onboarding.selfCare")}</span>
-              </button>
-
-              <button
-                type="button"
-                aria-pressed={!self}
-                onClick={() => {
-                  setSelf(false);
-                  setError(null);
-                }}
-                className={`pressable flex min-h-[104px] flex-col items-start rounded-[18px] border p-4 text-left transition-[transform,border-color,background-color] duration-150 ease-[var(--ease-out)] ${
-                  !self
-                    ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)]/60"
-                    : "border-[var(--color-border)] bg-[var(--color-surface)]"
-                }`}
-              >
-                <div className="mb-2 flex w-full items-center justify-between">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--color-surface)] text-[var(--color-primary)]">
-                    <Users size={18} aria-hidden="true" />
-                  </span>
-                  {!self && <CheckCircle2 size={20} className="text-[var(--color-primary)]" aria-hidden="true" />}
-                </div>
-                <span className="font-semibold">{t("onboarding.careForSomeone")}</span>
-              </button>
-            </div>
-
-            <div className="mt-6 flex flex-col gap-5">
-              {!self && (
-                <Field label={t("onboarding.patientName")}>
-                  <TextInput
-                    autoFocus
-                    autoComplete="name"
-                    value={patientName}
+            <Field label={self ? t("onboarding.patientPhoneSelf") : t("onboarding.patientPhone")}>
+              <div className={`flex min-h-[56px] overflow-hidden rounded-[14px] border bg-[var(--color-surface)] transition-colors ${error && !mobileValid ? "border-[var(--color-danger)]" : "border-[var(--color-border)] focus-within:border-[var(--color-primary)]"}`}>
+                <label className="flex min-w-[8.25rem] items-center border-r border-[var(--color-border)] bg-[var(--color-bg)] px-2" aria-label={t("onboarding.phoneCountry")}>
+                  <Smartphone size={17} className="mr-1 shrink-0 text-[var(--color-primary)]" aria-hidden="true" />
+                  <select
+                    value={phoneRegion}
                     onChange={(event) => {
-                      setPatientName(event.target.value);
+                      const next = event.target.value as DialingRegionCode;
+                      setPhoneRegion(next);
+                      setMobileNumber((current) => phoneInputFromValue(current, next));
                       setError(null);
                     }}
-                    placeholder={t("onboarding.patientNamePlaceholder")}
-                    aria-invalid={!!error && !patientName.trim()}
-                  />
-                </Field>
-              )}
-
-              <Field label={t("onboarding.patientPhone")}>
-                <div className={`flex min-h-[52px] overflow-hidden rounded-[12px] border bg-[var(--color-surface)] transition-colors ${error && !mobileValid ? "border-[var(--color-danger)]" : "border-[var(--color-border)] focus-within:border-[var(--color-primary)]"}`}>
-                  <label className="flex items-center border-r border-[var(--color-border)] bg-[var(--color-bg)] px-2" aria-label={t("onboarding.phoneCountry")}>
-                    <Smartphone size={17} className="mr-1 shrink-0 text-[var(--color-primary)]" aria-hidden="true" />
-                    <select
-                      value={phoneRegion}
-                      onChange={(event) => {
-                        const next = event.target.value as DialingRegionCode;
-                        setPhoneRegion(next);
-                        setMobileNumber((current) => phoneInputFromValue(current, next));
-                        setError(null);
-                      }}
-                      className="min-h-[48px] max-w-[112px] bg-transparent pr-1 text-sm font-semibold text-[var(--color-text)] outline-none"
-                    >
-                      {DIALING_REGIONS.map((region) => (
-                        <option key={region.code} value={region.code}>
-                          {region.dialCode ? `${region.name} +${region.dialCode}` : region.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <input
-                    autoComplete="tel"
-                    inputMode="tel"
-                    value={mobileNumber}
-                    onChange={(event) => updateMobile(event.target.value)}
-                    placeholder={selectedPhoneRegion.example}
-                    className="min-w-0 flex-1 bg-transparent px-3 text-base tracking-[0.04em] text-[var(--color-text)] outline-none placeholder:tracking-normal placeholder:text-[var(--color-text-muted)]"
-                    aria-describedby="phone-help"
-                    aria-invalid={!!error && !mobileValid}
-                  />
-                </div>
-                <p id="phone-help" className="mt-2 text-sm leading-5 text-[var(--color-text-muted)]">
-                  {t("onboarding.phoneHelp")}
-                </p>
-              </Field>
-            </div>
-
-            <OnboardingFooter error={error}>
-              <GhostButton type="button" onClick={() => moveTo(0)} className="w-[104px] shrink-0">
-                <ArrowLeft size={18} /> {t("common.back")}
-              </GhostButton>
-              <PrimaryButton type="submit" className="flex-1">
-                {t("common.continue")} <ArrowRight size={18} />
-              </PrimaryButton>
-            </OnboardingFooter>
-          </section>
-        )}
-
-        {step === 2 && (
-          <section key="voice" className="onboarding-step flex flex-1 flex-col">
-            <div className="mb-7">
-              <p className="mb-2 text-sm font-semibold text-[var(--color-primary)]">{t("onboarding.voiceEyebrow")}</p>
-              <h1 className="text-3xl font-bold tracking-[-0.03em]">
-                {t("onboarding.langTitle", { name: patientDisplayName })}
-              </h1>
-              <p className="mt-3 max-w-[38ch] leading-6 text-[var(--color-text-muted)]">{t("onboarding.voiceBody")}</p>
-            </div>
-
-            <div>
-              <span className="mb-2 block text-sm font-semibold text-[var(--color-text)]">{t("onboarding.callLanguage")}</span>
-              <CallLanguageSelect
-                value={callLang}
-                onChange={(language) => {
-                  stopPreview();
-                  setCallLang(language);
-                  if (!isSmsReminderLanguage(language)) setSmsReminderConsent(false);
-                  setVoiceStatus(null);
-                }}
-                describedBy="call-language-help"
-                generatedAudioNotice={t("onboarding.generatedVoiceRequirement")}
-              />
-              <p id="call-language-help" className="mt-2 text-sm leading-5 text-[var(--color-text-muted)]">
-                {t("onboarding.callLanguageHelp")}
-              </p>
-            </div>
-
-            <div className="mt-6">
-              <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
-                <Volume2 size={17} className="text-[var(--color-primary)]" aria-hidden="true" /> {t("onboarding.voice")}
-              </span>
-              <div className="grid grid-cols-2 gap-3" role="group" aria-label={t("onboarding.voice")}>
-                {(["female", "male"] as const).map((gender) => {
-                  const selected = voice === gender;
-                  return (
-                    <button
-                      key={gender}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => {
-                        stopPreview();
-                        setVoice(gender);
-                        setVoiceStatus(null);
-                      }}
-                      className={`pressable flex min-h-[74px] items-center justify-between rounded-[16px] border px-4 text-left transition-[transform,border-color,background-color] duration-150 ease-[var(--ease-out)] ${
-                        selected
-                          ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)]/60 text-[var(--color-primary)]"
-                          : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]"
-                      }`}
-                    >
-                      <span className="font-semibold">
-                        {gender === "female" ? t("onboarding.voiceFemale") : t("onboarding.voiceMale")}
-                      </span>
-                      {selected && <CheckCircle2 size={20} aria-hidden="true" />}
-                    </button>
-                  );
-                })}
+                    className="min-h-[52px] min-w-0 flex-1 bg-transparent text-sm font-semibold text-[var(--color-text)] outline-none"
+                  >
+                    {DIALING_REGIONS.map((region) => (
+                      <option key={region.code} value={region.code}>
+                        {region.dialCode ? `${region.name} +${region.dialCode}` : region.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <input
+                  autoComplete="tel"
+                  inputMode="tel"
+                  value={mobileNumber}
+                  onChange={(event) => updateMobile(event.target.value)}
+                  placeholder={selectedPhoneRegion.example}
+                  className="min-w-0 flex-1 bg-transparent px-3 text-lg text-[var(--color-text)] outline-none placeholder:text-base placeholder:text-[var(--color-text-muted)]"
+                  aria-describedby="phone-help"
+                  aria-invalid={!!error && !mobileValid}
+                />
               </div>
-            </div>
-
-            <div className="mt-4 rounded-[16px] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-              <GhostButton type="button" onClick={() => void previewVoice()} disabled={previewing} className="w-full border-0 bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
-                {previewing ? <LoaderCircle size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />}
-                {previewing ? t("onboarding.previewLoading") : t("onboarding.previewVoice")}
-              </GhostButton>
-              <p className="mt-2 min-h-5 px-1 text-sm leading-5 text-[var(--color-text-muted)]" role="status" aria-live="polite">
-                {voiceStatus ?? t("onboarding.previewHelp")}
+              <p id="phone-help" className="mt-2 text-sm leading-5 text-[var(--color-text-muted)]">
+                {t("onboarding.phoneHelp")}
               </p>
-            </div>
+            </Field>
 
-            <label className="mt-4 flex min-h-[64px] cursor-pointer items-start gap-3 rounded-[16px] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm leading-5 text-[var(--color-text)]">
-              <input
-                type="checkbox"
-                checked={smsReminderConsent}
-                disabled={!smsLanguageSupported}
-                onChange={(event) => setSmsReminderConsent(event.target.checked)}
-                className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary)] disabled:opacity-40"
-              />
-              <span>
-                <span className="block font-semibold">{t("onboarding.smsConsentTitle")}</span>
-                <span className="mt-1 block text-[var(--color-text-muted)]">
-                  {smsLanguageSupported
-                    ? t("onboarding.smsConsentBody")
-                    : t("onboarding.smsLanguagePending")}
+            <details className="group rounded-[16px] border border-[var(--color-border)] bg-[var(--color-surface)]">
+              <summary className="flex min-h-[58px] cursor-pointer list-none items-center justify-between gap-3 px-4 text-left text-sm font-semibold text-[var(--color-text)]">
+                <span className="flex items-center gap-2">
+                  <Volume2 size={18} className="text-[var(--color-primary)]" aria-hidden="true" />
+                  {t("onboarding.advancedTitle")}
                 </span>
-              </span>
-            </label>
+                <span className="text-sm text-[var(--color-primary)] group-open:hidden">{t("onboarding.customize")}</span>
+                <span className="hidden text-sm text-[var(--color-text-muted)] group-open:inline">{t("onboarding.quickDefaults")}</span>
+              </summary>
+              <div className="space-y-5 border-t border-[var(--color-border)] px-4 py-4">
+                <div>
+                  <span className="mb-2 block text-sm font-semibold text-[var(--color-text)]">{t("onboarding.callLanguage")}</span>
+                  <CallLanguageSelect
+                    value={callLang}
+                    onChange={(language) => {
+                      stopPreview();
+                      setCallLang(language);
+                      if (!isSmsReminderLanguage(language)) setSmsReminderConsent(false);
+                      setVoiceStatus(null);
+                    }}
+                    describedBy="call-language-help"
+                    generatedAudioNotice={t("onboarding.generatedVoiceRequirement")}
+                  />
+                  <p id="call-language-help" className="mt-2 text-sm leading-5 text-[var(--color-text-muted)]">
+                    {t("onboarding.callLanguageHelp")}
+                  </p>
+                </div>
 
-            <OnboardingFooter error={error}>
-              <GhostButton type="button" onClick={() => moveTo(1)} className="w-[104px] shrink-0" disabled={saving}>
-                <ArrowLeft size={18} /> {t("common.back")}
-              </GhostButton>
-              <PrimaryButton type="submit" className="flex-1" disabled={saving} aria-busy={saving}>
-                {saving ? <LoaderCircle size={18} className="animate-spin" /> : <Check size={18} />}
-                {saving ? t("onboarding.finishing") : t("onboarding.finish")}
-              </PrimaryButton>
-            </OnboardingFooter>
-          </section>
-        )}
+                <div>
+                  <span className="mb-2 block text-sm font-semibold text-[var(--color-text)]">{t("onboarding.voice")}</span>
+                  <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("onboarding.voice")}>
+                    {(["female", "male"] as const).map((gender) => {
+                      const selected = voice === gender;
+                      return (
+                        <button
+                          key={gender}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => {
+                            stopPreview();
+                            setVoice(gender);
+                            setVoiceStatus(null);
+                          }}
+                          className={`pressable flex min-h-[52px] items-center justify-center gap-2 rounded-[12px] border px-3 text-sm font-semibold transition-[transform,border-color,background-color] duration-150 ease-[var(--ease-out)] ${
+                            selected
+                              ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)]/60 text-[var(--color-primary)]"
+                              : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]"
+                          }`}
+                        >
+                          {selected && <CheckCircle2 size={18} aria-hidden="true" />}
+                          {gender === "female" ? t("onboarding.voiceFemale") : t("onboarding.voiceMale")}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-[14px] bg-[var(--color-bg)] p-3">
+                  <GhostButton type="button" onClick={() => void previewVoice()} disabled={previewing} className="w-full border-0 bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
+                    {previewing ? <LoaderCircle size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />}
+                    {previewing ? t("onboarding.previewLoading") : t("onboarding.previewVoice")}
+                  </GhostButton>
+                  <p className="mt-2 min-h-5 px-1 text-sm leading-5 text-[var(--color-text-muted)]" role="status" aria-live="polite">
+                    {voiceStatus ?? t("onboarding.previewHelp")}
+                  </p>
+                </div>
+
+                <label className="flex min-h-[64px] cursor-pointer items-start gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-bg)] p-4 text-sm leading-5 text-[var(--color-text)]">
+                  <input
+                    type="checkbox"
+                    checked={smsReminderConsent}
+                    disabled={!smsLanguageSupported}
+                    onChange={(event) => setSmsReminderConsent(event.target.checked)}
+                    className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary)] disabled:opacity-40"
+                  />
+                  <span>
+                    <span className="block font-semibold">{t("onboarding.smsConsentTitle")}</span>
+                    <span className="mt-1 block text-[var(--color-text-muted)]">
+                      {smsLanguageSupported
+                        ? t("onboarding.smsConsentBody")
+                        : t("onboarding.smsLanguagePending")}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </details>
+          </div>
+
+          <div className="mt-auto pt-6">
+            {error && (
+              <div className="mb-3" role="alert">
+                <Banner tone="danger">{error}</Banner>
+              </div>
+            )}
+            <PrimaryButton type="submit" disabled={saving} aria-busy={saving}>
+              {saving ? <LoaderCircle size={18} className="animate-spin" /> : <Check size={18} />}
+              {saving ? t("onboarding.finishing") : t("onboarding.startMedicineSetup")}
+            </PrimaryButton>
+            <p className="mt-3 text-center text-xs leading-5 text-[var(--color-text-muted)]">{t("onboarding.privacyNote")}</p>
+          </div>
+        </section>
       </form>
     </main>
   );
 }
 
-function OnboardingFooter({ children, error }: { children: React.ReactNode; error: string | null }) {
+function ReminderChoice({
+  selected,
+  icon,
+  title,
+  body,
+  onClick,
+}: {
+  selected: boolean;
+  icon: "self" | "other";
+  title: string;
+  body: string;
+  onClick: () => void;
+}) {
+  const Icon = icon === "self" ? User : Users;
+
   return (
-    <div className="mt-auto pt-7">
-      {error && (
-        <div className="mb-3" role="alert">
-          <Banner tone="danger">{error}</Banner>
-        </div>
-      )}
-      <div className="flex gap-3 border-t border-[var(--color-border)] pt-5">{children}</div>
-    </div>
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={`pressable flex min-h-[116px] flex-col items-start rounded-[16px] border p-3 text-left transition-[transform,border-color,background-color] duration-150 ease-[var(--ease-out)] ${
+        selected
+          ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)]/60"
+          : "border-[var(--color-border)] bg-[var(--color-surface)]"
+      }`}
+    >
+      <div className="mb-2 flex w-full items-center justify-between">
+        <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-[var(--color-surface)] text-[var(--color-primary)]">
+          <Icon size={18} aria-hidden="true" />
+        </span>
+        {selected && <CheckCircle2 size={20} className="text-[var(--color-primary)]" aria-hidden="true" />}
+      </div>
+      <span className="font-semibold text-[var(--color-text)]">{title}</span>
+      <span className="mt-1 text-xs leading-4 text-[var(--color-text-muted)]">{body}</span>
+    </button>
   );
 }

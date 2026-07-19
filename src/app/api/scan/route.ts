@@ -6,6 +6,9 @@ import { extractPhotos, resizeToDataUrl } from "@/lib/extraction";
 import { buildDraftMedications } from "@/lib/normalize";
 import { logger } from "@/lib/logger";
 import { putPrivateAsset } from "@/lib/storage";
+import { usesSupabaseAuth } from "@/lib/cloudflare-runtime";
+import { createSupabaseScanBatch, createSupabaseScanPhoto, updateSupabaseScanBatch } from "@/lib/supabase/scan";
+
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -32,7 +35,6 @@ const MIME_BY_EXTENSION: Record<string, (typeof ALLOWED)[number]> = {
 /** POST /api/scan — photos[] → DraftMedication[] (Arch §7.2 / Data-Flow §2). */
 export const POST = withErrorBoundary(async (req: Request) => {
   const started = Date.now();
-  const patient = await getPatientOrThrow();
 
   const form = await req.formData();
   const files = form.getAll("photos").filter((f): f is File => f instanceof File);
@@ -58,9 +60,18 @@ export const POST = withErrorBoundary(async (req: Request) => {
     }),
   );
 
-  const batch = await prisma.scanBatch.create({
-    data: { patientId: patient.id, status: "processing" },
-  });
+  const isSupa = usesSupabaseAuth();
+  let batchId: string;
+  if (isSupa) {
+    const supabaseBatch = await createSupabaseScanBatch();
+    batchId = supabaseBatch.id;
+  } else {
+    const patient = await getPatientOrThrow();
+    const batch = await prisma.scanBatch.create({
+      data: { patientId: patient.id, status: "processing" },
+    });
+    batchId = batch.id;
+  }
 
   // Persist originals + build bounded vision data URLs.
   const prepared: { dataUrl: string; photoNumber: number }[] = [];
@@ -70,16 +81,20 @@ export const POST = withErrorBoundary(async (req: Request) => {
     idx += 1;
     const extension = EXTENSION_BY_MIME[mimeType];
     const filename = `${idx}.${extension}`;
-    const filePath = `photos/${batch.id}/${filename}`;
+    const filePath = `photos/${batchId}/${filename}`;
     await putPrivateAsset(filePath, buf, mimeType);
-    await prisma.scanPhoto.create({
-      data: {
-        batchId: batch.id,
-        filePath,
-        mimeType,
-        sizeBytes: f.size,
-      },
-    });
+    if (isSupa) {
+      await createSupabaseScanPhoto(batchId, filePath, mimeType, f.size);
+    } else {
+      await prisma.scanPhoto.create({
+        data: {
+          batchId: batchId,
+          filePath,
+          mimeType,
+          sizeBytes: f.size,
+        },
+      });
+    }
     try {
       prepared.push({ dataUrl: await resizeToDataUrl(buf, mimeType), photoNumber: idx });
     } catch (err) {
@@ -92,7 +107,11 @@ export const POST = withErrorBoundary(async (req: Request) => {
   }
 
   if (prepared.length === 0) {
-    await prisma.scanBatch.update({ where: { id: batch.id }, data: { status: "failed" } });
+    if (isSupa) {
+      await updateSupabaseScanBatch(batchId, { status: "failed" });
+    } else {
+      await prisma.scanBatch.update({ where: { id: batchId }, data: { status: "failed" } });
+    }
     throw new AppError(
       "VALIDATION",
       "We couldn't read these image files. Please try another clear photo in daylight.",
@@ -106,22 +125,30 @@ export const POST = withErrorBoundary(async (req: Request) => {
     );
     const medications = await buildDraftMedications(rawMeds);
 
-    await prisma.scanBatch.update({
-      where: { id: batch.id },
-      data: { status: "extracted", rawExtractionJson: JSON.stringify(rawMeds) },
-    });
+    if (isSupa) {
+      await updateSupabaseScanBatch(batchId, { status: "extracted", rawExtractionJson: JSON.stringify(rawMeds) });
+    } else {
+      await prisma.scanBatch.update({
+        where: { id: batchId },
+        data: { status: "extracted", rawExtractionJson: JSON.stringify(rawMeds) },
+      });
+    }
 
     logger.info(
       { route: "/api/scan", ms: Date.now() - started, photos: files.length, meds: medications.length },
       "scan complete",
     );
     return NextResponse.json({
-      scanBatchId: batch.id,
+      scanBatchId: batchId,
       medications,
       imageIssues: [...preprocessingIssues, ...imageIssues],
     });
   } catch (err) {
-    await prisma.scanBatch.update({ where: { id: batch.id }, data: { status: "failed" } });
+    if (isSupa) {
+      await updateSupabaseScanBatch(batchId, { status: "failed" });
+    } else {
+      await prisma.scanBatch.update({ where: { id: batchId }, data: { status: "failed" } });
+    }
     throw err;
   }
 });

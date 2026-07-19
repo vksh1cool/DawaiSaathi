@@ -13,6 +13,23 @@
   },
   "background_color": "#FAFAF7",
   "theme_color": "#0F766E",
+  "shortcuts": [
+    {
+      "name": "Scan medicines",
+      "url": "/scan",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Safety checks",
+      "url": "/safety",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Generic savings",
+      "url": "/savings",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",

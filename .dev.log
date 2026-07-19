@@ -1,0 +1,57 @@
+
+> dawaisaathi@1.0.0 dev
+> next dev
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mProxy environment variables detected. We'll use your proxy for fetch requests.[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1m				You have defined bindings to the following internal Durable Objects:[0m
+
+  				- {"name":"NEXT_CACHE_DO_QUEUE","class_name":"DOQueueHandler"}
+  				These will not work in local development, but they should work in production.
+  
+  				If you want to develop these locally, you can define your DO in a separate Worker, with a separate configuration file.
+  				For detailed instructions, refer to the Durable Objects section here: [4mhttps://developers.cloudflare.com/workers/wrangler/api#supported-bindings[0m
+
+
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mFailed to write to log file [Error: EPERM: operation not permitted, open '/Users/viveksharma/Library/Preferences/.wrangler/logs/wrangler-2026-07-18_21-19-58_160.log'] {[0m
+
+    errno: -1,
+    code: 'EPERM',
+    syscall: 'open',
+    path: '/Users/viveksharma/Library/Preferences/.wrangler/logs/wrangler-2026-07-18_21-19-58_160.log'
+  }
+
+
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mWould have written: [0m
+
+  --- 2026-07-18T21:19:58.364Z debug
+  🪵  Writing logs to "/Users/viveksharma/Library/Preferences/.wrangler/logs/wrangler-2026-07-18_21-19-58_160.log"
+  ---
+  
+
+
+workerd/server/server.c++:3354: warning: A DurableObjectNamespace in the config referenced the class "DOQueueHandler", but no such Durable Object class is exported from the worker. Please make sure the class name matches, it is exported, and the class extends 'DurableObject'. Attempts to call to this Durable Object class will fail at runtime, but historically this was not a startup-time error. Future versions of workerd may make this a startup-time error.
+🪵  Logs were written to "/Users/viveksharma/Library/Preferences/.wrangler/logs/wrangler-2026-07-18_21-19-58_160.log"
+node:fs:2398
+    return binding.writeFileUtf8(
+                   ^
+
+Error: EPERM: operation not permitted, open '/Users/viveksharma/Library/Preferences/.wrangler/registry/dawaisaathi'
+    at writeFileSync (node:fs:2398:20)
+    at DevRegistry.register (/Users/viveksharma/Documents/GitHub/DawaiSaathi/node_modules/miniflare/dist/src/index.js:90697:42)
+    at #registerWorkers (/Users/viveksharma/Documents/GitHub/DawaiSaathi/node_modules/miniflare/dist/src/index.js:92990:23)
+    at #assembleAndUpdateConfig (/Users/viveksharma/Documents/GitHub/DawaiSaathi/node_modules/miniflare/dist/src/index.js:92896:32)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Mutex.runWith (/Users/viveksharma/Documents/GitHub/DawaiSaathi/node_modules/miniflare/dist/src/index.js:60897:48)
+    at async #waitForReady (/Users/viveksharma/Documents/GitHub/DawaiSaathi/node_modules/miniflare/dist/src/index.js:92940:5)
+    at async _Miniflare._getProxyClient (/Users/viveksharma/Documents/GitHub/DawaiSaathi/node_modules/miniflare/dist/src/index.js:93120:5)
+    at async _Miniflare.getBindings (/Users/viveksharma/Documents/GitHub/DawaiSaathi/node_modules/miniflare/dist/src/index.js:93139:25)
+    at async getPlatformProxy (/Users/viveksharma/Documents/GitHub/DawaiSaathi/node_modules/wrangler/wrangler-dist/cli.js:369136:21) {
+  errno: -1,
+  code: 'EPERM',
+  syscall: 'open',
+  path: '/Users/viveksharma/Library/Preferences/.wrangler/registry/dawaisaathi'
+}
+
+Node.js v26.0.0

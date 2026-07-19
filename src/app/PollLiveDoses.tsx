@@ -75,8 +75,25 @@ export function PollLiveDoses({
     }
   };
 
+  const allDone =
+    today.groups.length > 0 && today.groups.every((g) => g.status === "confirmed");
+
   return (
     <div className="flex flex-col gap-3">
+      {allDone && (
+        <div
+          role="status"
+          className="dose-group-card flex items-center gap-3 rounded-[var(--radius-card)] bg-[var(--color-success-soft)] px-4 py-3.5"
+        >
+          <span aria-hidden="true" className="text-2xl">🎉</span>
+          <div>
+            <p className="font-bold text-[var(--color-success)]">{t("home.allDoneTitle")}</p>
+            <p className="text-sm text-[var(--color-success)]">
+              {t("home.allDoneBody", { name: patientName })}
+            </p>
+          </div>
+        </div>
+      )}
       {today.groups.length === 0 ? (
         <Card>
           <p className="text-sm text-[var(--color-text-muted)]">{t("history.empty")}</p>

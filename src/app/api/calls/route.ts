@@ -5,11 +5,18 @@ import { withErrorBoundary } from "@/lib/errors";
 import { getPatientOrThrow } from "@/lib/household";
 import { getAudioSet } from "@/lib/calls";
 import { utcToLocalTime, slotKeyForTime } from "@/lib/util/dates";
+import { usesSupabaseAuth } from "@/lib/cloudflare-runtime";
+import { listSupabaseReminderCalls } from "@/lib/supabase/calls";
 
 export const runtime = "nodejs";
 
 /** GET /api/calls — reminder call history for the History screen (S8). */
 export const GET = withErrorBoundary(async () => {
+  if (usesSupabaseAuth()) {
+    const calls = await listSupabaseReminderCalls();
+    return NextResponse.json({ calls });
+  }
+
   const patient = await getPatientOrThrow();
   const tz = patient.timezone;
   const calls = await prisma.reminderCall.findMany({
