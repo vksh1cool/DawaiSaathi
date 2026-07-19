@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, User, Languages, Settings, Phone, Trash2, Power } from "lucide-react";
+import { ArrowLeft, User, Languages, Settings, Phone, Trash2, Power, Pill } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { AppLanguageSelect } from "@/components/AppLanguageSelect";
@@ -354,6 +354,18 @@ export default function ProfilePage() {
             />
           </div>
         </Card>
+
+        <Link href="/medications" className="pressable block transition-transform duration-150 ease-[var(--ease-out)]">
+          <Card>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-semibold text-[var(--color-text)]">
+                <Pill size={18} className="text-[var(--color-primary)]" />
+                {t("medications.title")}
+              </div>
+              <span className="text-sm font-medium text-[var(--color-primary)]">{t("common.edit")} →</span>
+            </div>
+          </Card>
+        </Link>
 
         <Card>
           <div className="mb-4 flex items-center gap-2 font-semibold text-[var(--color-danger)]">
