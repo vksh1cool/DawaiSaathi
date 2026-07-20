@@ -145,6 +145,23 @@ The floating feedback button asks for one short thing to improve or one short th
 
 ---
 
+## 📈 Scaling and production hardening
+
+**Scales natively, no extra infrastructure:**
+- **Compute** — the Next.js app runs stateless on Cloudflare Workers (via OpenNext), so it scales per-request across the edge with no app-server to size. Holds no in-process user state.
+- **Data** — the production target is Supabase Postgres (pooled) with row-level security per household; the current demo runtime is serverless Cloudflare D1. Both scale horizontally with tenant count.
+- **Storage** — private Cloudflare R2 for photos and generated audio; TTS clips are content-addressed and cached, so repeat scripts never re-bill.
+- **Reminders** — a separate Cloudflare cron Worker with a Durable Object queue ([`wrangler.reminders.jsonc`](wrangler.reminders.jsonc)) runs the outbound-call loop independently of web traffic.
+
+**Before high-traffic production, add two things:**
+1. **Raise / scope the AI budget.** `OPENAI_DAILY_LLM_REQUEST_LIMIT` and `OPENAI_DAILY_TTS_GENERATION_LIMIT` (default `12`) are a *global daily* demo safety cap stored in the DB. Raise them for real usage and make them per-tenant so one household cannot exhaust the shared budget.
+2. **Add per-request rate limiting.** Cost-incurring endpoints (`/api/scan`, `/api/tts/*`, auth OTP) currently have no per-IP/per-user throttle. Options, cheapest first:
+   - **Cloudflare WAF Rate Limiting Rules** — dashboard-configured, zero code or keys; the recommended baseline for IP-level abuse protection.
+   - **Durable Object limiter** — precise per-user limits in code; DOs are already part of this deployment.
+   - **[Upstash](https://upstash.com) Redis + `@upstash/ratelimit`** — fastest to wire into the app layer and portable off Cloudflare; needs `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. Its free tier (10k commands/day) covers early production. Choose this if you want app-controlled, per-identity limits without WAF configuration.
+
+---
+
 ## 📱 Android APK and GitHub Releases
 
 The Android app is versioned from [`android/twa-manifest.json`](android/twa-manifest.json) and opens the same production origin, `https://dawaisaathi.pages.dev`. The release workflow produces both a signed APK and an Android App Bundle (AAB), attaches SHA-256 checksums, and creates a GitHub Release for each `vX.Y.Z` tag.
