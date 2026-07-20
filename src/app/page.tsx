@@ -32,6 +32,10 @@ import { PollLiveDoses } from "./PollLiveDoses";
 import { AlertsList } from "./AlertsList";
 import { SavingsBanner } from "./SavingsBanner";
 
+// Per-tenant dashboard: reads auth/DB state on every request, so it must never
+// be statically prerendered (that would run Prisma at build with no database).
+export const dynamic = "force-dynamic";
+
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function findingTone(severity: Finding["severity"]) {

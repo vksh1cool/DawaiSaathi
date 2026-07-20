@@ -129,14 +129,25 @@ if (env.AI_PROVIDER === "groq" && !groqConfigured) {
 if (env.AUTH_DRIVER === "supabase" && (!supabaseUrlConfigured || !supabaseAnonConfigured)) {
   configIssues.push("SUPABASE_URL and SUPABASE_ANON_KEY are required when AUTH_DRIVER=supabase");
 }
-if (configIssues.length > 0) {
-  throw new Error(`Invalid environment configuration:\n${configIssues.map((issue) => `  - ${issue}`).join("\n")}`);
+// Secrets are runtime bindings on Cloudflare: `next build` collects page data
+// in an environment with no secrets, so a missing key must not crash module
+// import. Warn loudly here instead, and fail closed at the point of use —
+// openai.ts guards LLM calls, supabase/runtime.ts guards auth.
+if (configIssues.length > 0 && typeof window === "undefined") {
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[config] Incomplete environment — dependent features are disabled until fixed:\n${configIssues.map((issue) => `  - ${issue}`).join("\n")}`,
+  );
 }
 
+const llmConfigured =
+  env.AI_PROVIDER === "nim" ? nimConfigured && !!env.NIM_MODEL
+  : env.AI_PROVIDER === "groq" ? groqConfigured
+  : openAiConfigured;
 const llmApiKey =
-  env.AI_PROVIDER === "nim" ? env.NIM_API_KEY!
-  : env.AI_PROVIDER === "groq" ? env.GROQ_API_KEY!
-  : env.OPENAI_API_KEY!;
+  env.AI_PROVIDER === "nim" ? (nimConfigured ? env.NIM_API_KEY : undefined)
+  : env.AI_PROVIDER === "groq" ? (groqConfigured ? env.GROQ_API_KEY : undefined)
+  : openAiConfigured ? env.OPENAI_API_KEY : undefined;
 const llmBaseUrl =
   env.AI_PROVIDER === "nim" ? env.NIM_BASE_URL
   : env.AI_PROVIDER === "groq" ? "https://api.groq.com/openai/v1"
@@ -170,6 +181,9 @@ if (!twilioReady && typeof window === "undefined") {
 
 export const config = {
   llmProvider: env.AI_PROVIDER,
+  /** False when the selected provider's key (or NIM model) is missing; LLM
+   *  calls are refused with a clear error instead of failing at import. */
+  llmConfigured,
   llmApiKey,
   llmBaseUrl,
   llmModel,

@@ -11,6 +11,9 @@ import { serializeMedication } from "@/lib/medications";
 import type { Patient } from "@prisma/client";
 import { MedicationsClient } from "./MedicationsClient";
 
+// Per-tenant data fetched per request; must not be statically prerendered.
+export const dynamic = "force-dynamic";
+
 async function fetchMedications() {
   const useSupabase = usesSupabaseAuth();
   if (useSupabase) {

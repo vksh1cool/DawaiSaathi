@@ -10,11 +10,26 @@ import { reserveOpenAiRequest } from "@/lib/openai-budget";
  * The LLM call is injectable so tests never hit the network.
  */
 
-/** OpenAI SDK also speaks the OpenAI-compatible NIM chat-completions API. */
-export const openai = new OpenAI({
-  apiKey: config.llmApiKey,
-  ...(config.llmBaseUrl ? { baseURL: config.llmBaseUrl } : {}),
-});
+/**
+ * OpenAI SDK client (also speaks the OpenAI-compatible NIM/Groq chat API).
+ * Constructed lazily so a missing key never crashes module import — on
+ * Cloudflare, `next build` collects page data with no secrets present. A route
+ * that actually needs the LLM fails closed here with a clear error instead.
+ */
+let openaiClient: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!config.llmConfigured || !config.llmApiKey) {
+    throw new AppError(
+      "UPSTREAM_OPENAI",
+      "The AI service is not configured. Set the API key for the selected AI_PROVIDER.",
+    );
+  }
+  openaiClient ??= new OpenAI({
+    apiKey: config.llmApiKey,
+    ...(config.llmBaseUrl ? { baseURL: config.llmBaseUrl } : {}),
+  });
+  return openaiClient;
+}
 
 /** TTS stays on OpenAI unless a dedicated NIM Speech deployment is configured. */
 export const openAiTts = config.openAiTtsApiKey
@@ -40,6 +55,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const realClient: LLMClient = {
   async complete({ system, content, schemaName, jsonSchema }) {
+    // Fail closed before reserving budget if the provider isn't configured.
+    getOpenAI();
     const userParts = content.map((c) =>
       c.type === "text"
         ? { type: "text" as const, text: c.text }
@@ -74,7 +91,7 @@ const realClient: LLMClient = {
           { role: "system" as const, content: system + jsonHint },
           { role: "user" as const, content: userParts },
         ];
-        const resp = await openai.chat.completions.create(
+        const resp = await getOpenAI().chat.completions.create(
           config.llmProvider === "openai"
             ? {
                 model,
