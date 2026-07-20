@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Play, Check } from "lucide-react";
+import { Play, Check, Camera } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { EmptyState } from "@/components/EmptyState";
 import { ScheduleCard, type ScheduleDraft } from "@/components/ScheduleCard";
 import { PrimaryButton, GhostButton, Banner, ModalDialog, Spinner, TextInput } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/provider";
@@ -12,6 +13,7 @@ import { apiGet, apiJson, ApiError } from "@/lib/api-client";
 import type { SerializedMedication } from "@/lib/medications";
 import type { ScheduleSuggestion } from "@/types/domain";
 import { speechLocale, type CallLanguage } from "@/lib/languages";
+import { applyGenderedVoice, getSpeechVoices, type SpeechGender } from "@/lib/speech";
 import { DateTime } from "luxon";
 
 type ActiveSchedule = {
@@ -34,6 +36,7 @@ export default function SchedulePage() {
   const [previewing, setPreviewing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [patientLanguage, setPatientLanguage] = useState<CallLanguage>("hi");
+  const [patientVoiceGender, setPatientVoiceGender] = useState<SpeechGender>("female");
   const [reviewedAgainstInstructions, setReviewedAgainstInstructions] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const previewRequestRef = useRef(0);
@@ -48,11 +51,12 @@ export default function SchedulePage() {
           suggestions: [] as ScheduleSuggestion[],
         })),
         apiGet<{ schedules: ActiveSchedule[] }>("/api/schedules"),
-        apiGet<{ household: { patient: { name: string; timezone: string; language: CallLanguage } | null } }>("/api/household"),
+        apiGet<{ household: { patient: { name: string; timezone: string; language: CallLanguage; voiceGender: SpeechGender } | null } }>("/api/household"),
       ]);
       setPatientName(hh.household.patient?.name ?? "");
       setPatientTimezone(hh.household.patient?.timezone ?? "Asia/Kolkata");
       setPatientLanguage(hh.household.patient?.language ?? "hi");
+      setPatientVoiceGender(hh.household.patient?.voiceGender ?? "female");
       const sugMap = new Map(sugRes.suggestions.map((s) => [s.medicationId, s]));
       const activeMap = new Map(activeRes.schedules.map((schedule) => [schedule.medicationId, schedule]));
       setDrafts(
@@ -107,9 +111,13 @@ export default function SchedulePage() {
       setError(t("schedule.previewUnavailable"));
       return;
     }
+    const locale = speechLocale(patientLanguage);
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = speechLocale(patientLanguage);
+    utterance.lang = locale;
     utterance.rate = 0.9;
+    // Match the patient's saved female/male voice so the browser fallback does
+    // not preview the same OS default voice regardless of the choice.
+    applyGenderedVoice(utterance, locale, patientVoiceGender, getSpeechVoices());
     const finish = () => {
       if (requestId === previewRequestRef.current) setPreviewing(false);
     };
@@ -256,12 +264,15 @@ export default function SchedulePage() {
     return (
       <AppShell>
         <h1 className="mb-4 text-2xl font-bold">{t("schedule.title")}</h1>
-        <Banner tone="info">
-          <p>{t("schedule.empty")}</p>
-          <Link href="/scan" className="mt-3 inline-block">
-            <PrimaryButton>{t("schedule.goToScan")}</PrimaryButton>
-          </Link>
-        </Banner>
+        <EmptyState
+          icon={Camera}
+          title={t("schedule.empty")}
+          action={
+            <Link href="/scan" className="inline-block">
+              <PrimaryButton>{t("schedule.goToScan")}</PrimaryButton>
+            </Link>
+          }
+        />
       </AppShell>
     );
   }

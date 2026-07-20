@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
+import { withErrorBoundary } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { readWebhook } from "@/lib/integrations/twilio";
 
@@ -12,7 +13,7 @@ const STOP_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "
  * enforces its own STOP list; this keeps our consent record and queued jobs in
  * sync too. It deliberately never replies with protected health information.
  */
-export async function POST(req: Request) {
+export const POST = withErrorBoundary(async (req: Request) => {
   const { params, valid } = await readWebhook(req);
   if (!valid) return new Response("invalid signature", { status: 403 });
   if (legacyTenantDataBlocked()) return new Response(null, { status: 204 });
@@ -40,4 +41,4 @@ export async function POST(req: Request) {
   ]);
   logger.info({ patientCount: ids.length }, "SMS consent revoked through Twilio STOP");
   return new Response(null, { status: 204 });
-}
+});

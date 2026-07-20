@@ -12,6 +12,9 @@ import { HistoryClient } from "./HistoryClient";
 import { T } from "@/components/T";
 import { listSupabaseReminderCalls } from "@/lib/supabase/calls";
 
+// Per-tenant adherence history fetched per request; never prerender.
+export const dynamic = "force-dynamic";
+
 async function getAdherenceData() {
   if (usesSupabaseAuth()) {
     return getSupabaseAdherence(7);

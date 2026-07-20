@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { readWebhook, audioUrl, twilio, voiceLocale } from "@/lib/integrations/twilio";
 import { getAudioSet } from "@/lib/calls";
 import { usesSupabaseAuth, legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
+import { withErrorBoundary } from "@/lib/errors";
 import { getSupabaseReminderCallAdmin } from "@/lib/supabase/calls-admin";
 import { config } from "@/lib/config";
 import { logger } from "@/lib/logger";
@@ -10,7 +11,7 @@ import type { CallLanguage, TwilioVoiceLocale } from "@/lib/languages";
 export const runtime = "nodejs";
 
 /** POST /api/twilio/voice/reminder — play med list + gather menu (Arch §10.3). */
-export async function POST(req: Request) {
+export const POST = withErrorBoundary(async (req: Request) => {
   const { params, valid } = await readWebhook(req);
   if (!valid) return new Response("invalid signature", { status: 403 });
 
@@ -57,7 +58,7 @@ export async function POST(req: Request) {
 
   logger.info({ callId: call.id, from: params.From ? "***" : undefined }, "reminder twiml served");
   return xml(vr);
-}
+});
 
 async function appendMenuGather(
   vr: InstanceType<typeof twilio.twiml.VoiceResponse>,

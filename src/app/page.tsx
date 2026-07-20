@@ -26,10 +26,15 @@ import type { Finding } from "@/types/domain";
 import type { Patient } from "@prisma/client";
 
 import { T } from "@/components/T";
+import { EmptyState } from "@/components/EmptyState";
 import { Greeting } from "./Greeting";
 import { PollLiveDoses } from "./PollLiveDoses";
 import { AlertsList } from "./AlertsList";
 import { SavingsBanner } from "./SavingsBanner";
+
+// Per-tenant dashboard: reads auth/DB state on every request, so it must never
+// be statically prerendered (that would run Prisma at build with no database).
+export const dynamic = "force-dynamic";
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -138,15 +143,17 @@ async function HomePageDataFetcher() {
   if (!hasMeds) {
     return (
       <AppShell>
-        <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <Camera size={48} className="text-[var(--color-primary)]" />
-          <p className="text-[var(--color-text-muted)]"><T k="home.empty" /></p>
-          <Link href="/scan" className="w-full">
-            <PrimaryButton>
-              <Camera size={18} /> <T k="home.scanCta" />
-            </PrimaryButton>
-          </Link>
-        </div>
+        <EmptyState
+          icon={Camera}
+          title={<T k="home.empty" />}
+          action={
+            <Link href="/scan" className="w-full">
+              <PrimaryButton>
+                <Camera size={18} /> <T k="home.scanCta" />
+              </PrimaryButton>
+            </Link>
+          }
+        />
       </AppShell>
     );
   }

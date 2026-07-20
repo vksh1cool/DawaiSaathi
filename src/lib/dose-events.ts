@@ -195,9 +195,10 @@ async function settleCallsConfirmedByCaregiver(patientId: string, doseEventIds: 
 
 export async function getAdherence(patient: Patient, days: number) {
   const tz = patient.timezone || config.defaultTz;
-  const start = DateTime.now().setZone(tz).startOf("day").minus({ days: days - 1 });
+  const now = DateTime.now();
+  const start = now.setZone(tz).startOf("day").minus({ days: days - 1 });
   const startUtc = start.toUTC().toJSDate();
-  const endUtc = DateTime.now().setZone(tz).endOf("day").toUTC().toJSDate();
+  const endUtc = now.setZone(tz).endOf("day").toUTC().toJSDate();
 
   const events = await prisma.doseEvent.findMany({
     where: { patientId: patient.id, scheduledAtUtc: { gte: startUtc, lte: endUtc } },
