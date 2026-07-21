@@ -40,6 +40,11 @@ const schema = z.object({
   GROQ_API_KEY: z.string().trim().optional(),
   GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
   GROQ_VISION_MODEL: z.string().default("meta-llama/llama-4-scout-17b-16e-instruct"),
+  // Groq PlayAI text-to-speech: fast, natural, OpenAI-compatible, returns real
+  // mp3. Used as the preferred call/preview voice whenever a Groq key is set.
+  GROQ_TTS_MODEL: z.string().default("playai-tts"),
+  GROQ_TTS_VOICE_FEMALE: z.string().default("Celeste-PlayAI"),
+  GROQ_TTS_VOICE_MALE: z.string().default("Fritz-PlayAI"),
   OPENAI_TTS_MODEL: z.string().default("gpt-4o-mini-tts"),
   OPENAI_TTS_VOICE_FEMALE: z.string().default("coral"),
   OPENAI_TTS_VOICE_MALE: z.string().default("onyx"),
@@ -124,6 +129,7 @@ const openAiConfigured = isConfiguredSecret(env.OPENAI_API_KEY);
 const nimConfigured = isConfiguredSecret(env.NIM_API_KEY);
 const groqConfigured = isConfiguredSecret(env.GROQ_API_KEY);
 const geminiConfigured = isConfiguredSecret(env.GEMINI_API_KEY);
+const huggingfaceConfigured = isConfiguredSecret(env.HUGGINGFACE_API_KEY);
 const supabaseUrlConfigured = isConfiguredSecret(env.SUPABASE_URL);
 const supabaseAnonConfigured = isConfiguredSecret(env.SUPABASE_ANON_KEY);
 const configIssues: string[] = [];
@@ -192,9 +198,19 @@ export const config = {
   openAiTtsApiKey: openAiConfigured ? env.OPENAI_API_KEY! : null,
   openAiTtsEnabled: openAiConfigured,
   ttsModel: env.OPENAI_TTS_MODEL,
-  ttsVoiceFemale: env.HUGGINGFACE_API_KEY ? env.HUGGINGFACE_TTS_VOICE_FEMALE : env.OPENAI_TTS_VOICE_FEMALE,
-  ttsVoiceMale: env.HUGGINGFACE_API_KEY ? env.HUGGINGFACE_TTS_VOICE_MALE : env.OPENAI_TTS_VOICE_MALE,
-  huggingfaceApiKey: env.HUGGINGFACE_API_KEY,
+  openAiTtsVoiceFemale: env.OPENAI_TTS_VOICE_FEMALE,
+  openAiTtsVoiceMale: env.OPENAI_TTS_VOICE_MALE,
+  // Groq PlayAI TTS — preferred voice provider (fast, natural, real mp3).
+  groqTtsEnabled: groqConfigured,
+  groqApiKey: groqConfigured ? env.GROQ_API_KEY! : null,
+  groqTtsModel: env.GROQ_TTS_MODEL,
+  groqTtsVoiceFemale: env.GROQ_TTS_VOICE_FEMALE,
+  groqTtsVoiceMale: env.GROQ_TTS_VOICE_MALE,
+  // Hugging Face Inference TTS — fallback voice provider.
+  huggingfaceEnabled: huggingfaceConfigured,
+  huggingfaceApiKey: huggingfaceConfigured ? env.HUGGINGFACE_API_KEY!.trim() : null,
+  huggingfaceTtsVoiceFemale: env.HUGGINGFACE_TTS_VOICE_FEMALE,
+  huggingfaceTtsVoiceMale: env.HUGGINGFACE_TTS_VOICE_MALE,
   openAiDailyLlmRequestLimit: env.OPENAI_DAILY_LLM_REQUEST_LIMIT,
   openAiDailyTtsGenerationLimit: env.OPENAI_DAILY_TTS_GENERATION_LIMIT,
 
