@@ -30,7 +30,7 @@ const nonNegativeInt = (def: number) =>
     .pipe(z.number().int().nonnegative());
 
 const schema = z.object({
-  AI_PROVIDER: z.enum(["openai", "nim", "groq"]).default("openai"),
+  AI_PROVIDER: z.enum(["openai", "nim", "groq", "gemini"]).optional(),
   OPENAI_API_KEY: z.string().trim().optional(),
   OPENAI_BASE_URL: z.string().url().optional(),
   OPENAI_MODEL: z.string().default("gpt-5.6"),
@@ -139,18 +139,26 @@ const groqConfigured = isConfiguredSecret(env.GROQ_API_KEY);
 const geminiConfigured = isConfiguredSecret(env.GEMINI_API_KEY);
 const supabaseUrlConfigured = isConfiguredSecret(env.SUPABASE_URL);
 const supabaseAnonConfigured = isConfiguredSecret(env.SUPABASE_ANON_KEY);
+
+const effectiveAiProvider =
+  env.AI_PROVIDER ||
+  (groqConfigured ? "groq" : geminiConfigured ? "gemini" : openAiConfigured ? "openai" : "groq");
+
 const configIssues: string[] = [];
-if (env.AI_PROVIDER === "openai" && !openAiConfigured) {
+if (effectiveAiProvider === "openai" && !openAiConfigured) {
   configIssues.push("OPENAI_API_KEY is required when AI_PROVIDER=openai");
 }
-if (env.AI_PROVIDER === "nim" && !nimConfigured) {
+if (effectiveAiProvider === "nim" && !nimConfigured) {
   configIssues.push("NIM_API_KEY is required when AI_PROVIDER=nim");
 }
-if (env.AI_PROVIDER === "nim" && !env.NIM_MODEL) {
+if (effectiveAiProvider === "nim" && !env.NIM_MODEL) {
   configIssues.push("NIM_MODEL is required when AI_PROVIDER=nim");
 }
-if (env.AI_PROVIDER === "groq" && !groqConfigured) {
+if (effectiveAiProvider === "groq" && !groqConfigured) {
   configIssues.push("GROQ_API_KEY is required when AI_PROVIDER=groq");
+}
+if (effectiveAiProvider === "gemini" && !geminiConfigured) {
+  configIssues.push("GEMINI_API_KEY is required when AI_PROVIDER=gemini");
 }
 if (env.AUTH_DRIVER === "supabase" && (!supabaseUrlConfigured || !supabaseAnonConfigured)) {
   configIssues.push("SUPABASE_URL and SUPABASE_ANON_KEY are required when AUTH_DRIVER=supabase");
@@ -160,19 +168,22 @@ if (configIssues.length > 0) {
 }
 
 const llmApiKey =
-  env.AI_PROVIDER === "nim" ? env.NIM_API_KEY!
-  : env.AI_PROVIDER === "groq" ? env.GROQ_API_KEY!
+  effectiveAiProvider === "nim" ? env.NIM_API_KEY!
+  : effectiveAiProvider === "groq" ? env.GROQ_API_KEY!
+  : effectiveAiProvider === "gemini" ? env.GEMINI_API_KEY!
   : env.OPENAI_API_KEY!;
 const llmBaseUrl =
-  env.AI_PROVIDER === "nim" ? env.NIM_BASE_URL
-  : env.AI_PROVIDER === "groq" ? "https://api.groq.com/openai/v1"
+  effectiveAiProvider === "nim" ? env.NIM_BASE_URL
+  : effectiveAiProvider === "groq" ? "https://api.groq.com/openai/v1"
+  : effectiveAiProvider === "gemini" ? "https://generativelanguage.googleapis.com/v1beta/openai/"
   : env.OPENAI_BASE_URL;
 const llmModel =
-  env.AI_PROVIDER === "nim" ? env.NIM_MODEL!
-  : env.AI_PROVIDER === "groq" ? env.GROQ_MODEL
+  effectiveAiProvider === "nim" ? env.NIM_MODEL!
+  : effectiveAiProvider === "groq" ? env.GROQ_MODEL
+  : effectiveAiProvider === "gemini" ? env.GEMINI_MODEL
   : env.OPENAI_MODEL;
 const llmVisionModel =
-  env.AI_PROVIDER === "groq" ? env.GROQ_VISION_MODEL : llmModel;
+  effectiveAiProvider === "groq" ? env.GROQ_VISION_MODEL : llmModel;
 
 const twilioReady =
   isConfiguredSecret(env.TWILIO_ACCOUNT_SID) &&
@@ -195,7 +206,7 @@ if (!twilioReady && typeof window === "undefined") {
 }
 
 export const config = {
-  llmProvider: env.AI_PROVIDER,
+  llmProvider: effectiveAiProvider,
   llmApiKey,
   llmBaseUrl,
   llmModel,

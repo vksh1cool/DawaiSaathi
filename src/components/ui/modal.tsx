@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, type ReactNode, type RefObject } from "react";
+import { X } from "lucide-react";
 
 /**
  * Keyboard-safe modal primitive. It restores focus on close, closes on Escape
@@ -91,7 +92,7 @@ export function ModalDialog({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-4 sm:items-center" 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" 
       role="presentation"
       onClick={handleBackdropClick}
     >
@@ -103,9 +104,21 @@ export function ModalDialog({
         tabIndex={-1}
         className={`modal-shadow max-h-[calc(100dvh_-_2rem)] w-full max-w-[440px] overflow-y-auto rounded-[20px] p-5 ${surfaceClassName} ${className}`}
       >
-        <h2 id={titleId} className={`mb-3 text-lg font-bold text-[var(--color-text)] ${titleClassName}`}>
-          {title}
-        </h2>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 id={titleId} className={`text-lg font-bold text-[var(--color-text)] ${titleClassName}`}>
+            {title}
+          </h2>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close dialog"
+              className="pressable -mr-1 flex h-8 w-8 items-center justify-center rounded-full text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+          )}
+        </div>
         {children}
       </div>
     </div>
