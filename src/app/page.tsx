@@ -19,7 +19,7 @@ import { getSupabaseAdherence } from "@/lib/supabase/dose-events";
 import { getGenerics } from "@/lib/generics";
 import { listSupabaseAlerts } from "@/lib/supabase/alerts";
 import { prisma } from "@/lib/db";
-import { InteractionsRepository } from "@/lib/interactions";
+import { InteractionsRepository, openFindingsBySeverity } from "@/lib/interactions";
 import { serializeMedication } from "@/lib/medications";
 import { getSupabaseUserId } from "@/lib/supabase/server";
 import type { Finding } from "@/types/domain";
@@ -61,11 +61,7 @@ async function getDashboardData() {
     let openFindings: Finding[] = [];
     if (hh.patient) {
         const { findings } = await InteractionsRepository.listFindings().catch(() => ({ findings: [] }));
-        
-        const severityRank: Record<string, number> = { major: 0, moderate: 1, minor: 2, unverified: 3 };
-        openFindings = findings
-            .filter((f) => !f.acknowledged)
-            .sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
+        openFindings = openFindingsBySeverity(findings);
     }
 
     return {
@@ -105,10 +101,7 @@ async function getDashboardData() {
     InteractionsRepository.listFindings().catch(() => ({ findings: [] as Finding[] }))
   ]);
 
-  const severityRank: Record<string, number> = { major: 0, moderate: 1, minor: 2, unverified: 3 };
-  const openFindings = findings
-    .filter((f) => !f.acknowledged)
-    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
+  const openFindings = openFindingsBySeverity(findings);
 
   const alerts = alertRows.map((a) => ({
     id: a.id,

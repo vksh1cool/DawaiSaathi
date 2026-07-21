@@ -18,6 +18,15 @@ import { getPatientOrThrow } from "@/lib/household";
 
 export type MedSalt = { medId: string; brand: string; inn: string; fdaSearchName: string };
 
+const SEVERITY_RANK: Record<Severity, number> = { major: 0, moderate: 1, minor: 2, unverified: 3 };
+
+/** Unacknowledged findings, most severe first — drives the home banner and the interactions API. */
+export function openFindingsBySeverity(findings: Finding[]): Finding[] {
+  return findings
+    .filter((f) => !f.acknowledged)
+    .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
+}
+
 const consultEn = "Discuss with your doctor or pharmacist before the next dose.";
 const consultHi = "अगली खुराक से पहले डॉक्टर या फार्मासिस्ट से बात करें।";
 
