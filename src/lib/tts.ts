@@ -37,13 +37,12 @@ type Synth = (text: string, voiceGender: string) => Promise<Clip>;
 // optional paid OpenAI last resort. When both are unavailable, callers such as
 // /api/tts/preview degrade to the browser's on-device voice, so a preview always
 // speaks even with zero server-side providers.
-type TtsProvider = "gemini" | "openai";
+type TtsProvider = "huggingface" | "gemini" | "openai";
 
 /** Preferred provider order, limited to whichever are actually configured. */
 function ttsProviderChain(): TtsProvider[] {
   const chain: TtsProvider[] = [];
-  // Gemini first: human-sounding, free, and the only one that speaks Hindi +
-  // English naturally from a single voice.
+  if (config.huggingfaceApiKey) chain.push("huggingface");
   if (config.geminiTtsEnabled) chain.push("gemini");
   if (openAiTts) chain.push("openai");
   return chain;
@@ -52,6 +51,8 @@ function ttsProviderChain(): TtsProvider[] {
 function voiceForProvider(provider: TtsProvider, gender: string): string {
   const male = gender === "male";
   switch (provider) {
+    case "huggingface":
+      return male ? config.ttsVoiceMale : config.ttsVoiceFemale;
     case "gemini":
       return male ? config.geminiTtsVoiceMale : config.geminiTtsVoiceFemale;
     case "openai":
@@ -60,6 +61,7 @@ function voiceForProvider(provider: TtsProvider, gender: string): string {
 }
 
 function modelForProvider(provider: TtsProvider): string {
+  if (provider === "huggingface") return "huggingface-inference";
   return provider === "gemini" ? config.geminiTtsModel : config.ttsModel;
 }
 
@@ -122,6 +124,47 @@ async function geminiTts(text: string, voice: string): Promise<Clip> {
   return { data: pcmToWav(Buffer.from(inline.data, "base64"), sampleRate), contentType: "audio/wav" };
 }
 
+/** Hugging Face TTS via Inference API with automatic cold-boot retry. */
+async function huggingfaceTts(text: string, voice: string): Promise<Clip> {
+  let attempts = 0;
+  while (attempts < 3) {
+    const res = await fetch(`https://api-inference.huggingface.co/models/${voice}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.huggingfaceApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ inputs: text }),
+    });
+
+    if (res.ok) {
+      const contentType = res.headers.get("content-type") || "audio/mpeg";
+      return { data: Buffer.from(await res.arrayBuffer()), contentType };
+    }
+
+    const isServiceUnavailable = res.status === 503;
+    let waitTimeMs = 8000;
+    try {
+      const errorData = (await res.json()) as { error?: string; estimated_time?: number };
+      if (isServiceUnavailable && errorData.estimated_time) {
+        waitTimeMs = Math.ceil(errorData.estimated_time * 1000) + 1000;
+        logger.info({ voice, waitTimeMs }, "Hugging Face model is loading. Waiting before retry...");
+      } else {
+        throw new AppError("UPSTREAM_HUGGINGFACE", `Hugging Face TTS failed: ${errorData.error || res.statusText}`);
+      }
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw new AppError("UPSTREAM_HUGGINGFACE", `Hugging Face TTS failed: ${res.statusText}`);
+    }
+
+    attempts++;
+    if (attempts < 3) {
+      await new Promise((resolve) => setTimeout(resolve, waitTimeMs));
+    }
+  }
+  throw new AppError("UPSTREAM_HUGGINGFACE", "Hugging Face TTS failed: Model takes too long to load.");
+}
+
 /** OpenAI TTS — optional paid last resort, only reachable when a key is set. */
 async function openaiTts(text: string, voice: string): Promise<Clip> {
   await reserveOpenAiRequest("tts");
@@ -142,13 +185,14 @@ const realSynth: Synth = async (text, gender) => {
   if (chain.length === 0) {
     throw new AppError(
       "TTS_UNAVAILABLE",
-      "Generated call audio is unavailable because no TTS provider (Gemini or OpenAI) is configured.",
+      "Generated call audio is unavailable because no TTS provider (Hugging Face, Gemini, or OpenAI) is configured.",
     );
   }
   const errors: string[] = [];
   for (const provider of chain) {
     try {
       const voice = voiceForProvider(provider, gender);
+      if (provider === "huggingface") return await huggingfaceTts(text, voice);
       if (provider === "gemini") return await geminiTts(text, voice);
       return await openaiTts(text, voice);
     } catch (err) {

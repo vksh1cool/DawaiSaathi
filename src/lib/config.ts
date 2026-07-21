@@ -45,10 +45,13 @@ const schema = z.object({
   OPENAI_TTS_MODEL: z.string().default("gpt-4o-mini-tts"),
   OPENAI_TTS_VOICE_FEMALE: z.string().default("coral"),
   OPENAI_TTS_VOICE_MALE: z.string().default("onyx"),
-  // Hard, local daily request caps. `0` deliberately blocks that API class.
-  // They complement (rather than replace) a project budget in OpenAI.
   OPENAI_DAILY_LLM_REQUEST_LIMIT: nonNegativeInt(12),
   OPENAI_DAILY_TTS_GENERATION_LIMIT: nonNegativeInt(12),
+
+  // Hugging Face TTS (free open source SOTA voice models via Inference API)
+  HUGGINGFACE_API_KEY: z.string().trim().optional(),
+  HUGGINGFACE_TTS_VOICE_FEMALE: z.string().default("espnet/kan-bayashi_ljspeech_vits"),
+  HUGGINGFACE_TTS_VOICE_MALE: z.string().default("facebook/mms-tts-eng"),
 
   // Gemini is a second, independent AI provider used only to cross-check the
   // safety-critical calls (drug-interaction checking and strip-photo
@@ -206,6 +209,11 @@ export const config = {
   openAiTtsVoiceMale: env.OPENAI_TTS_VOICE_MALE,
   openAiDailyLlmRequestLimit: env.OPENAI_DAILY_LLM_REQUEST_LIMIT,
   openAiDailyTtsGenerationLimit: env.OPENAI_DAILY_TTS_GENERATION_LIMIT,
+
+  // Hugging Face TTS (free open source SOTA voices)
+  huggingfaceApiKey: isConfiguredSecret(env.HUGGINGFACE_API_KEY) ? env.HUGGINGFACE_API_KEY! : null,
+  ttsVoiceFemale: isConfiguredSecret(env.HUGGINGFACE_API_KEY) ? env.HUGGINGFACE_TTS_VOICE_FEMALE : env.OPENAI_TTS_VOICE_FEMALE,
+  ttsVoiceMale: isConfiguredSecret(env.HUGGINGFACE_API_KEY) ? env.HUGGINGFACE_TTS_VOICE_MALE : env.OPENAI_TTS_VOICE_MALE,
 
   // Second AI provider used only for dual-verify on safety-critical calls
   // (interactions + extraction). Disabled (skipped, not errored) when no key
