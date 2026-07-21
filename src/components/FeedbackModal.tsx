@@ -20,7 +20,7 @@ export function FeedbackModal({ onClose }: { onClose: () => void }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim()) return;
-    if (website || Date.now() - openedAt < 3000) {
+    if (website || Date.now() - openedAt < 800) {
       setSent(true); // Honeypot/bot trap
       return;
     }
