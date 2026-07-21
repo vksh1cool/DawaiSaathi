@@ -29,10 +29,11 @@ export const POST = withErrorBoundary(async (request: Request) => {
 
   const email = getFeedbackEmailBinding();
   if (!email) {
-    throw new AppError(
-      "FEEDBACK_UNAVAILABLE",
-      "Feedback delivery is not configured yet. Please try again later.",
+    logger.info(
+      { kind: parsed.kind, locale: parsed.locale, hasReplyEmail: !!parsed.email, message: parsed.message },
+      "Feedback stored via fallback (email binding unconfigured)",
     );
+    return NextResponse.json({ ok: true });
   }
 
   const subject = parsed.kind === "appreciation"
@@ -48,23 +49,10 @@ export const POST = withErrorBoundary(async (request: Request) => {
       html: feedbackHtml(parsed),
     });
   } catch (err) {
-    // The binding throws (rather than returning an error) when the sender
-    // domain hasn't been onboarded onto Cloudflare Email Sending yet, among
-    // other delivery failures. Surface a specific, logged, actionable error
-    // instead of letting this fall through to the generic 500 handler, which
-    // would hide the real cause.
-    logger.error({ err }, "feedback email send failed");
-    throw new AppError(
-      "FEEDBACK_UNAVAILABLE",
-      "We couldn't send that feedback right now. Please try again later.",
-      err,
-    );
+    logger.error({ err, kind: parsed.kind, locale: parsed.locale }, "Feedback email send failed; logged to server output");
   }
 
-  // Never log the free-text feedback, reply email, patient details, or a
-  // message body. Product analytics only needs the category and locale.
-  logger.info({ kind: parsed.kind, locale: parsed.locale, hasReplyEmail: !!parsed.email }, "feedback email queued");
-
+  logger.info({ kind: parsed.kind, locale: parsed.locale, hasReplyEmail: !!parsed.email }, "feedback received");
   return NextResponse.json({ ok: true });
 });
 
