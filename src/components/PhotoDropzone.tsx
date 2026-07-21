@@ -156,7 +156,10 @@ function fileKey(file: File) {
 
 function isAcceptedImage(file: File) {
   if (ACCEPTED_IMAGE_TYPES.has(file.type)) return true;
+  // HEIC/HEIF (default iPhone camera format) is rejected here, matching the
+  // server, so the user gets a clear "unsupported photo" message up front
+  // instead of the whole batch failing server-side after upload.
   // A few mobile browsers leave File.type empty for a camera capture. The
   // server revalidates and normalizes this extension before processing it.
-  return file.type === "" && /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name);
+  return file.type === "" && /\.(jpe?g|png|webp)$/i.test(file.name);
 }

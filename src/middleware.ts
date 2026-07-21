@@ -24,6 +24,9 @@ const INFRASTRUCTURE_PUBLIC_PATHS = [
   "/icons/",
   "/sw.js",
   "/offline.html",
+  // Cloudflare Assets 307-redirects /offline.html -> /offline; the service
+  // worker follows it, so the redirect target must stay publicly reachable.
+  "/offline",
   "/.well-known/assetlinks.json",
 ];
 
