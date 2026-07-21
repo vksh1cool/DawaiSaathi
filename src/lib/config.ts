@@ -63,6 +63,12 @@ const schema = z.object({
   // configured provider exactly like today. It never replaces AI_PROVIDER.
   GEMINI_API_KEY: z.string().trim().optional(),
   GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+  // Gemini native text-to-speech: human-sounding, multilingual (Hindi + English
+  // from the same voices — the model speaks whatever language the text is in).
+  // Preferred voice provider for elderly-friendly clarity.
+  GEMINI_TTS_MODEL: z.string().default("gemini-2.5-flash-preview-tts"),
+  GEMINI_TTS_VOICE_FEMALE: z.string().default("Kore"),
+  GEMINI_TTS_VOICE_MALE: z.string().default("Charon"),
   // Separate, smaller daily cap: dual-verify calls Gemini alongside (not
   // instead of) the primary provider, so its budget is tracked independently
   // rather than doubling consumption against OPENAI_DAILY_LLM_REQUEST_LIMIT.
@@ -221,6 +227,11 @@ export const config = {
   geminiApiKey: geminiConfigured ? env.GEMINI_API_KEY! : null,
   geminiModel: env.GEMINI_MODEL,
   geminiDailyLlmRequestLimit: env.GEMINI_DAILY_LLM_REQUEST_LIMIT,
+  // Gemini native TTS — preferred human/multilingual voice provider.
+  geminiTtsEnabled: geminiConfigured,
+  geminiTtsModel: env.GEMINI_TTS_MODEL,
+  geminiTtsVoiceFemale: env.GEMINI_TTS_VOICE_FEMALE,
+  geminiTtsVoiceMale: env.GEMINI_TTS_VOICE_MALE,
 
   twilioAccountSid: env.TWILIO_ACCOUNT_SID,
   twilioAuthToken: env.TWILIO_AUTH_TOKEN,
