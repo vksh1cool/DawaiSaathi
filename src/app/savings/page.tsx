@@ -88,7 +88,7 @@ export default function SavingsPage() {
       <p className="mt-5 text-sm font-medium text-[var(--color-text-muted)]">{t("savings.caption")}</p>
 
       <a
-        href="https://janaushadhi.gov.in/KendraDetails.aspx"
+        href="https://janaushadhi.gov.in"
         target="_blank"
         rel="noopener noreferrer"
         className="pressable mt-3 flex min-h-[52px] items-center justify-center gap-2 rounded-[12px] border border-[var(--color-primary)] px-4 font-semibold text-[var(--color-primary)] transition-[transform,background-color] duration-150 ease-[var(--ease-out)]"
