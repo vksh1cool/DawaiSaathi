@@ -59,7 +59,7 @@ const schema = z.object({
   // It is optional: when unset, dual-verify degrades to the single
   // configured provider exactly like today. It never replaces AI_PROVIDER.
   GEMINI_API_KEY: z.string().trim().optional(),
-  GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+  GEMINI_MODEL: z.string().default("gemini-flash-latest"),
   // Gemini native text-to-speech: human-sounding, multilingual (Hindi + English
   // from the same voice — the model speaks whatever language the text is in).
   // The primary, free voice provider for elderly-friendly warmth and clarity.

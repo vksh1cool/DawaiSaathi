@@ -39,10 +39,13 @@ type Synth = (text: string, voiceGender: string) => Promise<Clip>;
 // speaks even with zero server-side providers.
 type TtsProvider = "huggingface" | "gemini" | "openai";
 
-/** Preferred provider order, limited to whichever are actually configured. */
+/** Preferred provider order, limited to whichever are actually configured.
+ * Gemini native TTS is the primary voice engine (human, multilingual, and the
+ * only free provider that actually works — Hugging Face's serverless inference
+ * API no longer serves the TTS models on the free tier). OpenAI stays as an
+ * optional paid last resort when a key is present. */
 function ttsProviderChain(): TtsProvider[] {
   const chain: TtsProvider[] = [];
-  if (config.huggingfaceApiKey) chain.push("huggingface");
   if (config.geminiTtsEnabled) chain.push("gemini");
   if (openAiTts) chain.push("openai");
   return chain;
@@ -94,34 +97,54 @@ type GeminiTtsResponse = {
   }>;
 };
 
-/** Gemini native TTS — returns PCM audio we wrap as WAV. Human + multilingual. */
+/** Gemini native TTS — returns PCM audio we wrap as WAV. Human + multilingual.
+ * Auth uses the `x-goog-api-key` header (the only method that works for the
+ * newer "AQ." key format). The free tier intermittently returns 429 or an
+ * empty (finishReason OTHER) response, so retry a few times with backoff —
+ * a demo reminder should not fail on the first transient miss. */
 async function geminiTts(text: string, voice: string): Promise<Clip> {
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiTtsModel}:generateContent` +
-    `?key=${config.geminiApiKey}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      // Directorial style prompt shapes delivery; the model speaks only the
-      // text and in whatever language the text is written in.
-      contents: [{ parts: [{ text: `${TTS_INSTRUCTIONS}\n\n${text}` }] }],
-      generationConfig: {
-        responseModalities: ["AUDIO"],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiTtsModel}:generateContent`;
+  const backoffs = [1500, 4000, 8000];
+  let lastDetail = "";
+  for (let attempt = 0; attempt <= backoffs.length; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": config.geminiApiKey ?? "",
       },
-    }),
-  });
-  if (!res.ok) {
-    const detail = (await res.text().catch(() => "")).slice(0, 200) || res.statusText;
-    throw new AppError("UPSTREAM_GEMINI", `Gemini TTS failed (${res.status}): ${detail}`);
+      body: JSON.stringify({
+        // Directorial style prompt shapes delivery; the model speaks only the
+        // text and in whatever language the text is written in.
+        contents: [{ parts: [{ text: `${TTS_INSTRUCTIONS}\n\n${text}` }] }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+        },
+      }),
+    });
+
+    if (res.ok) {
+      const body = (await res.json()) as GeminiTtsResponse;
+      const inline = body.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
+      if (inline?.data) {
+        const rateMatch = /rate=(\d+)/.exec(inline.mimeType ?? "");
+        const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000;
+        return { data: pcmToWav(Buffer.from(inline.data, "base64"), sampleRate), contentType: "audio/wav" };
+      }
+      // 200 but no audio (finishReason OTHER) — transient, worth a retry.
+      lastDetail = "no audio in response";
+    } else {
+      lastDetail = (await res.text().catch(() => "")).slice(0, 200) || res.statusText;
+      // Only 429 (rate limit) and 5xx are transient; 4xx config errors are not.
+      if (res.status !== 429 && res.status < 500) {
+        throw new AppError("UPSTREAM_GEMINI", `Gemini TTS failed (${res.status}): ${lastDetail}`);
+      }
+    }
+
+    if (attempt < backoffs.length) await new Promise((r) => setTimeout(r, backoffs[attempt]));
   }
-  const body = (await res.json()) as GeminiTtsResponse;
-  const inline = body.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
-  if (!inline?.data) throw new AppError("UPSTREAM_GEMINI", "Gemini TTS returned no audio.");
-  const rateMatch = /rate=(\d+)/.exec(inline.mimeType ?? "");
-  const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000;
-  return { data: pcmToWav(Buffer.from(inline.data, "base64"), sampleRate), contentType: "audio/wav" };
+  throw new AppError("UPSTREAM_GEMINI", `Gemini TTS unavailable after retries: ${lastDetail}`);
 }
 
 /** Hugging Face TTS via Inference API with automatic cold-boot retry. */

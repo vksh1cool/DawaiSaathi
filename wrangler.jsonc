@@ -75,7 +75,15 @@
   "vars": {
     "AI_PROVIDER": "groq",
     "GROQ_MODEL": "llama-3.3-70b-versatile",
+    // Groq has no vision model on the current key, so image scanning is served
+    // by Gemini via dual-verify fallback (see src/lib/gemini.ts). This value is
+    // kept only for the primary-provider attempt and is otherwise unused.
     "GROQ_VISION_MODEL": "meta-llama/llama-4-scout-17b-16e-instruct",
+    // Gemini = vision (scan) + dual-verify cross-check + TTS voice. The
+    // GEMINI_API_KEY itself is a secret (set via `wrangler secret put`).
+    "GEMINI_MODEL": "gemini-flash-latest",
+    "GEMINI_TTS_MODEL": "gemini-2.5-flash-preview-tts",
+    "GEMINI_DAILY_LLM_REQUEST_LIMIT": "500",
     "DATABASE_DRIVER": "d1",
     "STORAGE_DRIVER": "r2",
     // The Pages gateway is the only user-facing origin. Keeping this stable is
@@ -93,8 +101,8 @@
     "WORKER_TICK_SECONDS": "60",
     "RETRY_DELAY_MINUTES": "10",
     "MAX_CALL_ATTEMPTS": "3",
-    "OPENAI_DAILY_LLM_REQUEST_LIMIT": "50",
-    "OPENAI_DAILY_TTS_GENERATION_LIMIT": "12",
+    "OPENAI_DAILY_LLM_REQUEST_LIMIT": "500",
+    "OPENAI_DAILY_TTS_GENERATION_LIMIT": "200",
     // SHA-256 of the certificate the installed APK is signed with. Cert
     // fingerprints are public by design (Android publishes them in
     // assetlinks.json); swap for the release-key fingerprint at launch.
