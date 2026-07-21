@@ -18,10 +18,51 @@ type Synth = (text: string, voice: string) => Promise<Buffer>;
 const realSynth: Synth = async (text, voice) => {
   // This runs only after the content-addressed cache misses, so cached demo
   // clips stay free and do not consume the daily cap.
+  // If Hugging Face is configured, use it first
+  if (config.huggingfaceApiKey) {
+    let attempts = 0;
+    while (attempts < 3) {
+      const res = await fetch(`https://api-inference.huggingface.co/models/${voice}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.huggingfaceApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ inputs: text }),
+      });
+
+      if (res.ok) {
+        return Buffer.from(await res.arrayBuffer());
+      }
+
+      const isServiceUnavailable = res.status === 503;
+      let waitTimeMs = 10000; // Default 10s wait
+
+      try {
+        const errorData = (await res.json()) as { error?: string; estimated_time?: number };
+        if (isServiceUnavailable && errorData.estimated_time) {
+          waitTimeMs = Math.ceil(errorData.estimated_time * 1000) + 1000;
+          logger.info({ voice, waitTimeMs }, "Hugging Face model is loading. Waiting before retry...");
+        } else {
+          throw new AppError("UPSTREAM_HUGGINGFACE", `Hugging Face TTS failed: ${errorData.error || res.statusText}`);
+        }
+      } catch (err) {
+        if (err instanceof AppError) throw err;
+        throw new AppError("UPSTREAM_HUGGINGFACE", `Hugging Face TTS failed: ${res.statusText}`);
+      }
+
+      attempts++;
+      if (attempts < 3) {
+        await new Promise((resolve) => setTimeout(resolve, waitTimeMs));
+      }
+    }
+    throw new AppError("UPSTREAM_HUGGINGFACE", "Hugging Face TTS failed: Model is taking too long to load.");
+  }
+
   if (!openAiTts) {
     throw new AppError(
       "UPSTREAM_OPENAI",
-      "Generated call audio is unavailable because OPENAI_API_KEY is not configured for text-to-speech.",
+      "Generated call audio is unavailable because no TTS API key (OpenAI or Hugging Face) is configured.",
     );
   }
   await reserveOpenAiRequest("tts");

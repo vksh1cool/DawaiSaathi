@@ -10,7 +10,7 @@ import { CallLanguageSelect } from "@/components/CallLanguageSelect";
 import { Banner, Card, GhostButton, ModalDialog, PrimaryButton, Spinner, TextInput, Toast } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/provider";
 import { useAppInfo } from "@/lib/app-info";
-import { apiGet, apiJson } from "@/lib/api-client";
+import { apiGet, apiJson, ApiError } from "@/lib/api-client";
 import {
   DIALING_REGIONS,
   phoneInputFromValue,
@@ -80,7 +80,13 @@ export default function ProfilePage() {
           setPhoneInput(phone.localNumber);
         }
       })
-      .catch(() => setLoadError(t("profile.loadError")))
+      .catch((err) => {
+        // Before onboarding there is no household — leave the household fields
+        // empty so the app-level settings (language, reminders) still render,
+        // instead of blocking the whole page with an error banner.
+        if (err instanceof ApiError && err.code === "NOT_FOUND") return;
+        setLoadError(t("profile.loadError"));
+      })
       .finally(() => setLoading(false));
   }, [t]);
 

@@ -100,12 +100,13 @@ export default function OnboardingPage() {
 
   const playDevicePreview = (requestId: number, language: CallLanguage, name: string) => {
     if (requestId !== previewRequestRef.current) return;
-    if (!("speechSynthesis" in window)) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       setPreviewing(false);
       setVoiceStatus(t("onboarding.previewUnavailable"));
       return;
     }
 
+    const synth = window.speechSynthesis;
     const utterance = new SpeechSynthesisUtterance(voiceSampleScript(language, name));
     utterance.lang = speechLocale(language);
     utterance.rate = 0.88;
@@ -117,9 +118,35 @@ export default function OnboardingPage() {
       setPreviewing(false);
       setVoiceStatus(t("onboarding.previewUnavailable"));
     };
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-    setVoiceStatus(t("onboarding.previewDevice"));
+
+    const speak = () => {
+      if (requestId !== previewRequestRef.current) return;
+      const target = utterance.lang.slice(0, 2).toLowerCase();
+      const match = synth.getVoices().find((v) => v.lang?.toLowerCase().startsWith(target));
+      if (match) utterance.voice = match;
+      synth.cancel();
+      // Android Chrome sometimes leaves the engine paused after a prior cancel.
+      synth.resume();
+      synth.speak(utterance);
+      setVoiceStatus(t("onboarding.previewDevice"));
+    };
+
+    // Android Chrome and the TWA return an empty voice list until the speech
+    // engine finishes loading; calling speak() before then silently does
+    // nothing. Wait for voiceschanged, with a timeout fallback if it never fires.
+    if (synth.getVoices().length > 0) {
+      speak();
+      return;
+    }
+    let started = false;
+    const onVoices = () => {
+      if (started) return;
+      started = true;
+      synth.removeEventListener("voiceschanged", onVoices);
+      speak();
+    };
+    synth.addEventListener("voiceschanged", onVoices);
+    window.setTimeout(onVoices, 500);
   };
 
   const previewVoice = async () => {

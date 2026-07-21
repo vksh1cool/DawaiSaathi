@@ -43,6 +43,9 @@ const schema = z.object({
   OPENAI_TTS_MODEL: z.string().default("gpt-4o-mini-tts"),
   OPENAI_TTS_VOICE_FEMALE: z.string().default("coral"),
   OPENAI_TTS_VOICE_MALE: z.string().default("onyx"),
+  HUGGINGFACE_API_KEY: z.string().trim().optional(),
+  HUGGINGFACE_TTS_VOICE_FEMALE: z.string().default("espnet/kan-bayashi_ljspeech_vits"),
+  HUGGINGFACE_TTS_VOICE_MALE: z.string().default("facebook/mms-tts-eng"),
   // Hard, local daily request caps. `0` deliberately blocks that API class.
   // They complement (rather than replace) a project budget in OpenAI.
   OPENAI_DAILY_LLM_REQUEST_LIMIT: nonNegativeInt(12),
@@ -189,8 +192,9 @@ export const config = {
   openAiTtsApiKey: openAiConfigured ? env.OPENAI_API_KEY! : null,
   openAiTtsEnabled: openAiConfigured,
   ttsModel: env.OPENAI_TTS_MODEL,
-  ttsVoiceFemale: env.OPENAI_TTS_VOICE_FEMALE,
-  ttsVoiceMale: env.OPENAI_TTS_VOICE_MALE,
+  ttsVoiceFemale: env.HUGGINGFACE_API_KEY ? env.HUGGINGFACE_TTS_VOICE_FEMALE : env.OPENAI_TTS_VOICE_FEMALE,
+  ttsVoiceMale: env.HUGGINGFACE_API_KEY ? env.HUGGINGFACE_TTS_VOICE_MALE : env.OPENAI_TTS_VOICE_MALE,
+  huggingfaceApiKey: env.HUGGINGFACE_API_KEY,
   openAiDailyLlmRequestLimit: env.OPENAI_DAILY_LLM_REQUEST_LIMIT,
   openAiDailyTtsGenerationLimit: env.OPENAI_DAILY_TTS_GENERATION_LIMIT,
 

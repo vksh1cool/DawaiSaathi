@@ -5,7 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Banner, Card, GhostButton, Spinner } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/provider";
-import { apiGet } from "@/lib/api-client";
+import { apiGet, ApiError } from "@/lib/api-client";
 import { formatInr } from "@/lib/util/money";
 import type { GenericMatchResult } from "@/types/domain";
 
@@ -20,7 +20,13 @@ export default function SavingsPage() {
     setError(null);
     try {
       setData(await apiGet<GenericsResponse>("/api/generics"));
-    } catch {
+    } catch (err) {
+      // Before onboarding there is no household yet — show the empty savings
+      // state (no matches) rather than an error banner.
+      if (err instanceof ApiError && err.code === "NOT_FOUND") {
+        setData({ matches: [], totalMonthlySavingsInr: 0 });
+        return;
+      }
       setError(t("savings.loadError"));
     }
   }, [t]);
