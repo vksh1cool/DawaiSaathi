@@ -7,7 +7,7 @@ import { FindingCard } from "@/components/FindingCard";
 import { AuthenticityCard } from "@/components/AuthenticityCard";
 import { Banner, Spinner, GhostButton } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/provider";
-import { apiGet, apiJson } from "@/lib/api-client";
+import { apiGet, apiJson, ApiError } from "@/lib/api-client";
 import type { Finding, Salt } from "@/types/domain";
 
 type InteractionsResponse = { open: Finding[]; acknowledged: Finding[]; lastRunAt: string | null };
@@ -41,16 +41,24 @@ export default function SafetyPage() {
 
   const load = useCallback(async () => {
     setLoadError(null);
-    try {
-      const [res, meds] = await Promise.all([
-        apiGet<InteractionsResponse>("/api/interactions"),
-        apiGet<{ medications: MedicationForPackCheck[] }>("/api/medications"),
-      ]);
-      setData(res);
-      setMedications(meds.medications);
-    } catch {
+    const [resR, medsR] = await Promise.allSettled([
+      apiGet<InteractionsResponse>("/api/interactions"),
+      apiGet<{ medications: MedicationForPackCheck[] }>("/api/medications"),
+    ]);
+    // Before onboarding there is no household yet, so both calls reject with
+    // NOT_FOUND. That is an empty state (nothing to check), not a load failure —
+    // only surface the error banner for genuine (network / server) failures.
+    const isEmptyState = (r: PromiseSettledResult<unknown>) =>
+      r.status === "rejected" && r.reason instanceof ApiError && r.reason.code === "NOT_FOUND";
+    const realFailure =
+      (resR.status === "rejected" && !isEmptyState(resR)) ||
+      (medsR.status === "rejected" && !isEmptyState(medsR));
+    if (realFailure) {
       setLoadError(t("safety.loadError"));
+      return;
     }
+    setData(resR.status === "fulfilled" ? resR.value : { open: [], acknowledged: [], lastRunAt: null });
+    setMedications(medsR.status === "fulfilled" ? medsR.value.medications : []);
   }, [t]);
 
   useEffect(() => {

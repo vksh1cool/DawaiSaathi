@@ -60,8 +60,8 @@ jobs:
       - name: Validate release version and TWA configuration
         run: |
           npm run android:version -- "$RELEASE_VERSION"
-          npm run android:check
           npm run android:sync
+          npm run android:check
 
       - name: Restore release signing key
         env:

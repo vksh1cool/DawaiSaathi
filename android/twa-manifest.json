@@ -4,7 +4,10 @@
   "name": "DawaiSaathi",
   "launcherName": "DawaiSaathi",
   "display": "standalone",
-  "displayOverride": ["standalone", "minimal-ui"],
+  "displayOverride": [
+    "standalone",
+    "minimal-ui"
+  ],
   "themeColor": "#0F766E",
   "themeColorDark": "#115E59",
   "navigationColor": "#FAFAF7",
@@ -28,6 +31,6 @@
   "fallbackType": "customtabs",
   "enableSiteSettingsShortcut": true,
   "minSdkVersion": 23,
-  "orientation": "any",
+  "orientation": "portrait",
   "launchHandlerClientMode": "navigate-existing"
 }

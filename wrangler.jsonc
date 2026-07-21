@@ -4,6 +4,9 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-16",
   "compatibility_flags": ["nodejs_compat"],
+  // The OpenNext server handler ships unminified (~16 MiB raw); minifying at
+  // upload keeps the compressed bundle under the free-plan 3 MiB Worker limit.
+  "minify": true,
 
   // OpenNext writes these static assets during `npm run cf:build`.
   "assets": {
@@ -95,7 +98,7 @@
     // SHA-256 of the certificate the installed APK is signed with. Cert
     // fingerprints are public by design (Android publishes them in
     // assetlinks.json); swap for the release-key fingerprint at launch.
-    "ANDROID_APP_CERT_SHA256": "B7:18:EB:9F:9C:7C:AF:AA:13:25:F2:95:04:8C:CD:69:A9:24:95:8B:91:B4:80:01:E3:5E:D2:63:90:7A:84:AD"
+    "ANDROID_APP_CERT_SHA256": "D2:5F:BE:37:F0:7B:31:C6:48:BA:A5:26:69:08:9D:2F:67:58:33:ED:D5:AB:07:A2:3B:ED:6E:62:2F:8A:99:BD"
   },
 
   "observability": {
