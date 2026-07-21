@@ -417,3 +417,27 @@ export function speechLocale(language: CallLanguage): string {
 export function twilioVoiceLocale(language: CallLanguage): TwilioVoiceLocale | null {
   return callLanguageMeta(language).twilioLocale;
 }
+
+/**
+ * Choose the most natural on-device voice for a BCP-47 locale, preferring
+ * cloud/neural voices (e.g. "Google हिन्दी") over robotic built-in ones. Used
+ * for the browser fallback voice when Gemini TTS is unavailable, so even the
+ * degraded preview sounds as human as the device allows. Pure — takes the
+ * already-loaded voice list, so it stays safe in this shared (server) module.
+ */
+export function pickPreviewVoice(
+  voices: SpeechSynthesisVoice[],
+  locale: string,
+): SpeechSynthesisVoice | undefined {
+  const target = locale.slice(0, 2).toLowerCase();
+  const forLang = voices.filter((v) => v.lang?.toLowerCase().startsWith(target));
+  if (forLang.length === 0) return undefined;
+  const normalized = locale.toLowerCase().replace("_", "-");
+  const exact = forLang.filter((v) => v.lang?.toLowerCase().replace("_", "-") === normalized);
+  const pool = exact.length > 0 ? exact : forLang;
+  return (
+    pool.find((v) => /google|natural|neural|premium|enhanced/i.test(v.name)) ??
+    pool.find((v) => !v.localService) ??
+    pool[0]
+  );
+}

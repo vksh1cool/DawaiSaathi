@@ -11,7 +11,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { apiGet, apiJson, ApiError } from "@/lib/api-client";
 import type { SerializedMedication } from "@/lib/medications";
 import type { ScheduleSuggestion } from "@/types/domain";
-import { speechLocale, type CallLanguage } from "@/lib/languages";
+import { pickPreviewVoice, speechLocale, type CallLanguage } from "@/lib/languages";
 import { DateTime } from "luxon";
 
 type ActiveSchedule = {
@@ -109,7 +109,10 @@ export default function SchedulePage() {
     }
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = speechLocale(patientLanguage);
-    utterance.rate = 0.9;
+    // Gentle, unhurried pace for older listeners; prefer a natural device voice.
+    utterance.rate = 0.85;
+    const match = pickPreviewVoice(window.speechSynthesis.getVoices(), utterance.lang);
+    if (match) utterance.voice = match;
     const finish = () => {
       if (requestId === previewRequestRef.current) setPreviewing(false);
     };

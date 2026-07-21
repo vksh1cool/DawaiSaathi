@@ -40,17 +40,11 @@ const schema = z.object({
   GROQ_API_KEY: z.string().trim().optional(),
   GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
   GROQ_VISION_MODEL: z.string().default("meta-llama/llama-4-scout-17b-16e-instruct"),
-  // Groq PlayAI text-to-speech: fast, natural, OpenAI-compatible, returns real
-  // mp3. Used as the preferred call/preview voice whenever a Groq key is set.
-  GROQ_TTS_MODEL: z.string().default("playai-tts"),
-  GROQ_TTS_VOICE_FEMALE: z.string().default("Celeste-PlayAI"),
-  GROQ_TTS_VOICE_MALE: z.string().default("Fritz-PlayAI"),
+  // OpenAI TTS: optional paid last resort behind Gemini. Only used when an
+  // OpenAI key is configured and Gemini is unavailable.
   OPENAI_TTS_MODEL: z.string().default("gpt-4o-mini-tts"),
   OPENAI_TTS_VOICE_FEMALE: z.string().default("coral"),
   OPENAI_TTS_VOICE_MALE: z.string().default("onyx"),
-  HUGGINGFACE_API_KEY: z.string().trim().optional(),
-  HUGGINGFACE_TTS_VOICE_FEMALE: z.string().default("espnet/kan-bayashi_ljspeech_vits"),
-  HUGGINGFACE_TTS_VOICE_MALE: z.string().default("facebook/mms-tts-eng"),
   // Hard, local daily request caps. `0` deliberately blocks that API class.
   // They complement (rather than replace) a project budget in OpenAI.
   OPENAI_DAILY_LLM_REQUEST_LIMIT: nonNegativeInt(12),
@@ -64,11 +58,16 @@ const schema = z.object({
   GEMINI_API_KEY: z.string().trim().optional(),
   GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
   // Gemini native text-to-speech: human-sounding, multilingual (Hindi + English
-  // from the same voices — the model speaks whatever language the text is in).
-  // Preferred voice provider for elderly-friendly clarity.
+  // from the same voice — the model speaks whatever language the text is in).
+  // The primary, free voice provider for elderly-friendly warmth and clarity.
+  // gemini-2.5-flash-preview-tts is proven on the free tier; for even more
+  // expressive delivery set GEMINI_TTS_MODEL=gemini-3.1-flash-tts-preview when
+  // your key's project has access to it.
   GEMINI_TTS_MODEL: z.string().default("gemini-2.5-flash-preview-tts"),
-  GEMINI_TTS_VOICE_FEMALE: z.string().default("Kore"),
-  GEMINI_TTS_VOICE_MALE: z.string().default("Charon"),
+  // Warm, human voices chosen for older listeners: Sulafat ("Warm") and Algieba
+  // ("Smooth"). Any of Gemini's 30 prebuilt voice names is accepted.
+  GEMINI_TTS_VOICE_FEMALE: z.string().default("Sulafat"),
+  GEMINI_TTS_VOICE_MALE: z.string().default("Algieba"),
   // Separate, smaller daily cap: dual-verify calls Gemini alongside (not
   // instead of) the primary provider, so its budget is tracked independently
   // rather than doubling consumption against OPENAI_DAILY_LLM_REQUEST_LIMIT.
@@ -135,7 +134,6 @@ const openAiConfigured = isConfiguredSecret(env.OPENAI_API_KEY);
 const nimConfigured = isConfiguredSecret(env.NIM_API_KEY);
 const groqConfigured = isConfiguredSecret(env.GROQ_API_KEY);
 const geminiConfigured = isConfiguredSecret(env.GEMINI_API_KEY);
-const huggingfaceConfigured = isConfiguredSecret(env.HUGGINGFACE_API_KEY);
 const supabaseUrlConfigured = isConfiguredSecret(env.SUPABASE_URL);
 const supabaseAnonConfigured = isConfiguredSecret(env.SUPABASE_ANON_KEY);
 const configIssues: string[] = [];
@@ -206,17 +204,6 @@ export const config = {
   ttsModel: env.OPENAI_TTS_MODEL,
   openAiTtsVoiceFemale: env.OPENAI_TTS_VOICE_FEMALE,
   openAiTtsVoiceMale: env.OPENAI_TTS_VOICE_MALE,
-  // Groq PlayAI TTS — preferred voice provider (fast, natural, real mp3).
-  groqTtsEnabled: groqConfigured,
-  groqApiKey: groqConfigured ? env.GROQ_API_KEY! : null,
-  groqTtsModel: env.GROQ_TTS_MODEL,
-  groqTtsVoiceFemale: env.GROQ_TTS_VOICE_FEMALE,
-  groqTtsVoiceMale: env.GROQ_TTS_VOICE_MALE,
-  // Hugging Face Inference TTS — fallback voice provider.
-  huggingfaceEnabled: huggingfaceConfigured,
-  huggingfaceApiKey: huggingfaceConfigured ? env.HUGGINGFACE_API_KEY!.trim() : null,
-  huggingfaceTtsVoiceFemale: env.HUGGINGFACE_TTS_VOICE_FEMALE,
-  huggingfaceTtsVoiceMale: env.HUGGINGFACE_TTS_VOICE_MALE,
   openAiDailyLlmRequestLimit: env.OPENAI_DAILY_LLM_REQUEST_LIMIT,
   openAiDailyTtsGenerationLimit: env.OPENAI_DAILY_TTS_GENERATION_LIMIT,
 

@@ -28,7 +28,7 @@ import {
   isValidPhoneInput,
   type DialingRegionCode,
 } from "@/lib/onboarding";
-import { isSmsReminderLanguage, speechLocale, type CallLanguage } from "@/lib/languages";
+import { isSmsReminderLanguage, pickPreviewVoice, speechLocale, type CallLanguage } from "@/lib/languages";
 import { voiceSampleScript } from "@/lib/voice-samples";
 
 type VoiceGender = "female" | "male";
@@ -109,7 +109,8 @@ export default function OnboardingPage() {
     const synth = window.speechSynthesis;
     const utterance = new SpeechSynthesisUtterance(voiceSampleScript(language, name));
     utterance.lang = speechLocale(language);
-    utterance.rate = 0.88;
+    // Gentle, unhurried pace for older listeners.
+    utterance.rate = 0.85;
     utterance.onend = () => {
       if (requestId === previewRequestRef.current) setPreviewing(false);
     };
@@ -121,8 +122,7 @@ export default function OnboardingPage() {
 
     const speak = () => {
       if (requestId !== previewRequestRef.current) return;
-      const target = utterance.lang.slice(0, 2).toLowerCase();
-      const match = synth.getVoices().find((v) => v.lang?.toLowerCase().startsWith(target));
+      const match = pickPreviewVoice(synth.getVoices(), utterance.lang);
       if (match) utterance.voice = match;
       synth.cancel();
       // Android Chrome sometimes leaves the engine paused after a prior cancel.
@@ -158,12 +158,16 @@ export default function OnboardingPage() {
     setVoiceStatus(null);
 
     try {
-      const res = await apiJson<{ audioUrl: string }>("/api/tts/sample", "POST", {
+      const res = await apiJson<{ audioUrl: string | null }>("/api/tts/sample", "POST", {
         language: selectedLanguage,
         voiceGender: voice,
         name: selectedName,
       });
       if (requestId !== previewRequestRef.current) return;
+      if (!res.audioUrl) {
+        playDevicePreview(requestId, selectedLanguage, selectedName);
+        return;
+      }
       const audio = new Audio(res.audioUrl);
       let usingFallback = false;
       const useFallback = () => {
