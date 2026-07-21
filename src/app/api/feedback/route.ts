@@ -27,32 +27,53 @@ export const POST = withErrorBoundary(async (request: Request) => {
     throw new AppError("VALIDATION", "Please take a moment before sending feedback.");
   }
 
-  const email = getFeedbackEmailBinding();
-  if (!email) {
-    logger.info(
-      { kind: parsed.kind, locale: parsed.locale, hasReplyEmail: !!parsed.email, message: parsed.message },
-      "Feedback stored via fallback (email binding unconfigured)",
-    );
-    return NextResponse.json({ ok: true });
-  }
-
   const subject = parsed.kind === "appreciation"
-    ? "DawaiSaathi appreciation"
-    : "DawaiSaathi improvement request";
-  try {
-    await email.send({
-      to: TO,
-      from: { email: FROM, name: "DawaiSaathi feedback" },
-      ...(parsed.email ? { replyTo: parsed.email } : {}),
-      subject,
-      text: feedbackText(parsed),
-      html: feedbackHtml(parsed),
-    });
-  } catch (err) {
-    logger.error({ err, kind: parsed.kind, locale: parsed.locale }, "Feedback email send failed; logged to server output");
+    ? "DawaiSaathi Appreciation"
+    : "DawaiSaathi Improvement Request";
+
+  // Primary: Cloudflare Email binding if available
+  const emailBinding = getFeedbackEmailBinding();
+  if (emailBinding) {
+    try {
+      await emailBinding.send({
+        to: TO,
+        from: { email: FROM, name: "DawaiSaathi feedback" },
+        ...(parsed.email ? { replyTo: parsed.email } : {}),
+        subject,
+        text: feedbackText(parsed),
+        html: feedbackHtml(parsed),
+      });
+      logger.info({ kind: parsed.kind, locale: parsed.locale }, "feedback sent via Cloudflare email binding");
+      return NextResponse.json({ ok: true });
+    } catch (err) {
+      logger.warn({ err }, "Cloudflare email binding failed; trying FormSubmit fallback");
+    }
   }
 
-  logger.info({ kind: parsed.kind, locale: parsed.locale, hasReplyEmail: !!parsed.email }, "feedback received");
+  // Fallback / Public Provider: FormSubmit.co (delivers directly to contact@launchpixel.in)
+  try {
+    const fsRes = await fetch(`https://formsubmit.co/ajax/${TO}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Referer": "https://dawaisaathi.pages.dev",
+      },
+      body: JSON.stringify({
+        name: "DawaiSaathi Feedback User",
+        email: parsed.email || TO,
+        subject: `[DawaiSaathi] ${subject}`,
+        message: feedbackText(parsed),
+        _template: "table",
+        _captcha: "false",
+      }),
+    });
+    const data = await fsRes.json().catch(() => ({}));
+    logger.info({ status: fsRes.status, data }, "feedback sent via FormSubmit");
+  } catch (err) {
+    logger.error({ err }, "FormSubmit delivery attempt failed; logged feedback locally");
+  }
+
   return NextResponse.json({ ok: true });
 });
 
