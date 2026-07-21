@@ -1,4 +1,4 @@
-import { callLLM } from "@/lib/openai";
+import { callLLMDualVerify } from "@/lib/dual-verify";
 import {
   EXTRACTION_SYSTEM,
   EXTRACTION_SCHEMA,
@@ -33,9 +33,14 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-/** Extract medicines from one photo. */
+/**
+ * Extract medicines from one photo. Safety-critical — dual-verified against
+ * Gemini (Arch §8.1): both models read the same photo, and per-field
+ * disagreement lowers fieldConfidence so the existing review UI (already
+ * driven by fieldConfidence) prompts the caregiver to double-check.
+ */
 export async function extractPhoto(dataUrl: string): Promise<ExtractionResult> {
-  return callLLM({
+  const dual = await callLLMDualVerify({
     system: EXTRACTION_SYSTEM,
     content: [
       { type: "text", text: "Extract all medicines from this photo." },
@@ -45,6 +50,127 @@ export async function extractPhoto(dataUrl: string): Promise<ExtractionResult> {
     jsonSchema: EXTRACTION_SCHEMA,
     zodSchema: extractionZod,
   });
+
+  if (!dual.secondary) {
+    // Gemini unconfigured/errored — degrade to single-provider behavior
+    // exactly as before dual-verify existed.
+    return dual.primary;
+  }
+  return crossCheckExtraction(dual.primary, dual.secondary);
+}
+
+/** Below this, the existing review UI (ConfidenceField/pack-check) already
+ * treats a field as unreliable — see src/lib/pack-check.ts CONFIDENCE_THRESHOLD. */
+const DISAGREEMENT_CONFIDENCE_CAP = 0.4;
+
+const valuesAgree = (a: string | number | null, b: string | number | null): boolean => {
+  if (a == null || b == null) return a === b;
+  if (typeof a === "string" && typeof b === "string") return a.trim().toLowerCase() === b.trim().toLowerCase();
+  return a === b;
+};
+
+const compositionSig = (composition: RawMed["composition"]): string =>
+  composition
+    .map((c) => {
+      const salt = c.saltNameAsPrinted.trim().toLowerCase().replace(/\s+/g, " ");
+      const strength = c.strengthValue == null ? "" : `${c.strengthValue}${c.strengthUnit ?? ""}`.toLowerCase();
+      return `${salt}:${strength}`;
+    })
+    .sort()
+    .join("+");
+
+/**
+ * Field-by-field cross-check for two independent extractions of the SAME
+ * physical medicine (Arch §8.1): keep the value both models agree on; where
+ * they disagree, keep the primary provider's value but lower its
+ * fieldConfidence to signal the disagreement — never silently pick one
+ * value and hide that the models disagreed.
+ */
+function crossCheckOne(a: RawMed, b: RawMed): RawMed {
+  const brandAgree = valuesAgree(a.brandName, b.brandName);
+  const compositionAgree = compositionSig(a.composition) === compositionSig(b.composition);
+  const mrpAgree = valuesAgree(a.mrpInr, b.mrpInr);
+  const expiryAgree = valuesAgree(a.expiryDate, b.expiryDate);
+
+  const warnings = new Set([...a.warnings, ...b.warnings]);
+  if (!brandAgree) warnings.add("Brand name disagreement between AI cross-check providers — please verify.");
+  if (!compositionAgree) warnings.add("Composition disagreement between AI cross-check providers — please verify.");
+  if (!mrpAgree) warnings.add("MRP disagreement between AI cross-check providers — please verify.");
+  if (!expiryAgree) warnings.add("Expiry date disagreement between AI cross-check providers — please verify.");
+
+  return {
+    brandName: a.brandName ?? b.brandName,
+    composition:
+      compositionAgree || a.composition.length >= b.composition.length ? a.composition : b.composition,
+    form: a.form !== "other" ? a.form : b.form,
+    packSize: a.packSize ?? b.packSize,
+    mrpInr: a.mrpInr ?? b.mrpInr,
+    expiryDate: a.expiryDate ?? b.expiryDate,
+    batchNumber: a.batchNumber ?? b.batchNumber,
+    manufacturer: a.manufacturer ?? b.manufacturer,
+    fieldConfidence: {
+      brandName: brandAgree
+        ? Math.max(a.fieldConfidence.brandName, b.fieldConfidence.brandName)
+        : Math.min(a.fieldConfidence.brandName, DISAGREEMENT_CONFIDENCE_CAP),
+      composition: compositionAgree
+        ? Math.max(a.fieldConfidence.composition, b.fieldConfidence.composition)
+        : Math.min(a.fieldConfidence.composition, DISAGREEMENT_CONFIDENCE_CAP),
+      mrpInr: mrpAgree
+        ? Math.max(a.fieldConfidence.mrpInr, b.fieldConfidence.mrpInr)
+        : Math.min(a.fieldConfidence.mrpInr, DISAGREEMENT_CONFIDENCE_CAP),
+      expiryDate: expiryAgree
+        ? Math.max(a.fieldConfidence.expiryDate, b.fieldConfidence.expiryDate)
+        : Math.min(a.fieldConfidence.expiryDate, DISAGREEMENT_CONFIDENCE_CAP),
+    },
+    warnings: Array.from(warnings),
+  };
+}
+
+/** A medicine only one provider detected at all is even lower-confidence
+ * than a field disagreement — surface it (never silently drop a medicine
+ * one model found), but flag every field as needing review. */
+function markNotConfirmedBySecondProvider(m: RawMed): RawMed {
+  return {
+    ...m,
+    fieldConfidence: {
+      brandName: Math.min(m.fieldConfidence.brandName, DISAGREEMENT_CONFIDENCE_CAP),
+      composition: Math.min(m.fieldConfidence.composition, DISAGREEMENT_CONFIDENCE_CAP),
+      mrpInr: Math.min(m.fieldConfidence.mrpInr, DISAGREEMENT_CONFIDENCE_CAP),
+      expiryDate: Math.min(m.fieldConfidence.expiryDate, DISAGREEMENT_CONFIDENCE_CAP),
+    },
+    warnings: Array.from(
+      new Set([
+        ...m.warnings,
+        "Only one AI cross-check provider detected this medicine — please verify against the physical pack.",
+      ]),
+    ),
+  };
+}
+
+/** Cross-check a primary + Gemini extraction of the same photo (Arch §8.1). */
+function crossCheckExtraction(primary: ExtractionResult, secondary: ExtractionResult): ExtractionResult {
+  const secondaryPool = [...secondary.medications];
+  const merged: RawMed[] = [];
+
+  for (const p of primary.medications) {
+    const matchIndex = secondaryPool.findIndex((s) => representsSameMedicine(p, s));
+    if (matchIndex === -1) {
+      merged.push(markNotConfirmedBySecondProvider(p));
+      continue;
+    }
+    const [match] = secondaryPool.splice(matchIndex, 1);
+    merged.push(crossCheckOne(p, match));
+  }
+  // Anything left was found ONLY by Gemini — surface it rather than
+  // silently dropping a medicine the second model detected.
+  for (const s of secondaryPool) {
+    merged.push(markNotConfirmedBySecondProvider(s));
+  }
+
+  return {
+    medications: merged,
+    imageIssues: Array.from(new Set([...primary.imageIssues, ...secondary.imageIssues])),
+  };
 }
 
 /** Run extraction across photos in parallel, isolating per-photo failures (Data-Flow §2). */

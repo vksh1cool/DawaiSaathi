@@ -1,11 +1,11 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, Camera, ChevronRight, IndianRupee } from "lucide-react";
+import { AlertTriangle, Camera, ChevronRight, IndianRupee, ListChecks } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
 import { AdherenceBar } from "@/components/AdherenceBar";
-import { PrimaryButton, Card, Spinner } from "@/components/ui";
+import { PrimaryButton, GhostButton, Card, Spinner } from "@/components/ui";
 import { formatInr } from "@/lib/util/money";
 
 import { usesSupabaseAuth } from "@/lib/cloudflare-runtime";
@@ -141,11 +141,18 @@ async function HomePageDataFetcher() {
         <div className="flex flex-col items-center gap-4 py-16 text-center">
           <Camera size={48} className="text-[var(--color-primary)]" />
           <p className="text-[var(--color-text-muted)]"><T k="home.empty" /></p>
-          <Link href="/scan" className="w-full">
-            <PrimaryButton>
-              <Camera size={18} /> <T k="home.scanCta" />
-            </PrimaryButton>
-          </Link>
+          <div className="flex w-full flex-col gap-2">
+            <Link href="/scan" className="w-full">
+              <PrimaryButton>
+                <Camera size={18} /> <T k="home.scanCta" />
+              </PrimaryButton>
+            </Link>
+            <Link href="/scan/picker" className="w-full">
+              <GhostButton className="w-full">
+                <ListChecks size={18} /> <T k="home.pickerCta" />
+              </GhostButton>
+            </Link>
+          </div>
         </div>
       </AppShell>
     );

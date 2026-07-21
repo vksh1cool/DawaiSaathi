@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { ScanModeTabs } from "@/components/ScanModeTabs";
 import { PhotoDropzone } from "@/components/PhotoDropzone";
 import { ExtractionProgress } from "@/components/ExtractionProgress";
 import { PrimaryButton, Banner } from "@/components/ui";
@@ -37,6 +38,7 @@ export default function ScanPage() {
 
   return (
     <AppShell>
+      {!busy && <ScanModeTabs active="scan" />}
       <h1 className="mb-1 text-2xl font-bold">{t("scan.title")}</h1>
       {!busy && (
         <p className="mb-4 text-sm leading-6 text-[var(--color-text-muted)]">{t("scan.tips")}</p>

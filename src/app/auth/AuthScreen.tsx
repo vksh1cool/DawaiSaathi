@@ -1,8 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { BellRing, Languages, ShieldCheck, Users } from "lucide-react";
-import { useAppInfo } from "@/lib/app-info";
+import { BellRing, ShieldCheck, Users } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { AppLanguageSelect } from "@/components/AppLanguageSelect";
 import { Banner } from "@/components/ui";
@@ -17,8 +16,6 @@ export function AuthScreen({
   initialError?: "invalid_link" | "expired_link";
 }) {
   const { lang, setLang, t } = useI18n();
-  const { info } = useAppInfo();
-  const phoneAuthEnabled = info?.phoneAuthEnabled === true;
 
   return (
     <main className="min-h-[100dvh] bg-[var(--color-bg)] px-4 py-[calc(1rem_+_env(safe-area-inset-top))] sm:px-6 lg:px-8">
@@ -73,17 +70,8 @@ export function AuthScreen({
               />
             </div>
           </div>
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-[var(--color-primary-soft)] px-3 py-1.5 text-sm font-semibold text-[var(--color-primary)]">
-            <Languages size={16} aria-hidden="true" />
-            {t("auth.emailFirstBadge")}
-          </div>
           <h1 className="text-3xl font-bold leading-tight text-[var(--color-text)]">{t("auth.title")}</h1>
           <p className="mt-3 max-w-[42ch] leading-6 text-[var(--color-text-muted)]">{t("auth.body")}</p>
-          {!phoneAuthEnabled && (
-            <p className="mt-4 rounded-[12px] bg-[var(--color-info-soft)] px-4 py-3 text-sm font-medium leading-5 text-[var(--color-info)]">
-              {t("auth.phoneDisabled")}
-            </p>
-          )}
           {initialError && (
             <div className="mt-5">
               <Banner tone="warn">
@@ -91,7 +79,7 @@ export function AuthScreen({
               </Banner>
             </div>
           )}
-          <AuthForm nextPath={nextPath} phoneAuthEnabled={phoneAuthEnabled} />
+          <AuthForm nextPath={nextPath} />
         </section>
       </div>
     </main>

@@ -7,6 +7,8 @@ import { getSlotMeds, buildSlotScripts } from "@/lib/reminder";
 import { ensureAudio } from "@/lib/tts";
 import { foodRelationSchema, timeBodySchema } from "@/lib/validation";
 import { logger } from "@/lib/logger";
+import { usesSupabaseAuth } from "@/lib/cloudflare-runtime";
+import { buildSupabaseSlotScripts } from "@/lib/supabase/reminder";
 import type { FoodRelation } from "@/types/domain";
 import type { CallLanguage } from "@/lib/languages";
 
@@ -39,8 +41,22 @@ const previewSchema = timeBodySchema
 
 /** POST /api/tts/preview — the exact reminder audio for a slot (Arch §7.7, US-8). */
 export const POST = withErrorBoundary(async (req: Request) => {
-  const patient = await getPatientOrThrow();
   const { time, schedules } = previewSchema.parse(await req.json());
+
+  if (usesSupabaseAuth()) {
+    const { scripts, language, voiceGender } = await buildSupabaseSlotScripts(time, schedules);
+    try {
+      const audio = await ensureAudio(scripts.greetingMedlist, language, voiceGender);
+      return NextResponse.json({ audioUrl: audio.url, scriptText: scripts.greetingMedlist });
+    } catch (err) {
+      // A preview remains useful with the browser's built-in voice when OpenAI
+      // TTS is not configured or temporarily unavailable.
+      logger.warn({ err }, "schedule preview TTS unavailable (supabase) — returning script fallback");
+      return NextResponse.json({ audioUrl: null, scriptText: scripts.greetingMedlist });
+    }
+  }
+
+  const patient = await getPatientOrThrow();
 
   let slot: Awaited<ReturnType<typeof getSlotMeds>>;
   if (schedules) {

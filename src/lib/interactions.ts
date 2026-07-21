@@ -2,11 +2,12 @@ import { prisma } from "@/lib/db";
 import { parseSalts, parseEvidence } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { callLLM } from "@/lib/openai";
+import { callLLMDualVerify } from "@/lib/dual-verify";
 import {
   INTERACTION_SYSTEM,
   INTERACTION_SCHEMA,
   interactionZod,
+  type InteractionLLMResult,
 } from "@/lib/prompts";
 import { findCuratedInteraction } from "@/lib/reference-data";
 import { fetchLabelExcerpts } from "@/lib/integrations/openfda";
@@ -43,28 +44,19 @@ export type InteractionRunResult = {
 /**
  * Three-layer interaction engine with strict post-validation (Arch §8.4, PRD F3).
  * Curated wins; openFDA needs a verbatim quote; LLM-only is always unverified.
+ *
+ * Persistence-agnostic: takes plain medication rows in, returns findings out.
+ * Both the Prisma path (`runInteractions` below) and the Supabase tenant path
+ * (`runSupabaseInteractions` in `@/lib/supabase/interactions`) share this core
+ * so the curated/openFDA/dual-verify-LLM logic is never duplicated. `idFactory`
+ * lets each backend mint ids in the shape its own `id` column expects (cuid
+ * strings for Prisma/SQLite, uuid strings for Supabase's `uuid` columns).
  */
-export async function runInteractions(patientId: string): Promise<InteractionRunResult> {
-  const meds = await prisma.medication.findMany({
-    where: { patientId, status: "active" },
-  });
-
-  // Flatten salts, tracking which medication each belongs to.
-  const medSalts: MedSalt[] = [];
-  for (const m of meds) {
-    for (const s of parseSalts(m)) {
-      if (s.inn.trim()) {
-        medSalts.push({
-          medId: m.id,
-          brand: m.brandName,
-          inn: s.inn.toLowerCase(),
-          fdaSearchName: s.fdaSearchName || s.inn,
-        });
-      }
-    }
-  }
-
-  const runId = cuid();
+export async function computeInteractions(
+  meds: { id: string; brandName: string }[],
+  medSalts: MedSalt[],
+  idFactory: () => string = cuid,
+): Promise<InteractionRunResult> {
   const findings: Finding[] = [];
   const curatedPairKeys = new Set<string>();
 
@@ -90,7 +82,7 @@ export async function runInteractions(patientId: string): Promise<InteractionRun
       const bLabel = aIsRowA ? label(b) : label(a);
 
       findings.push({
-        id: cuid(),
+        id: idFactory(),
         pairKey: pk,
         medAId: a.medId,
         medBId: b.medId,
@@ -163,8 +155,23 @@ export async function runInteractions(patientId: string): Promise<InteractionRun
         // Major only allowed for curated or quoted-openFDA.
         if (severity === "major" && !(source === "openfda" && quoteOk)) severity = "moderate";
 
+        // Dual-verify cross-check (Arch §8.1): only treat a finding as fully
+        // confirmed when BOTH the primary provider and Gemini flagged the
+        // same pair. A finding only one model flagged is still surfaced
+        // (never silently dropped), but demoted to "unverified" with an
+        // explicit needs-review note rather than silently trusted at its
+        // original severity.
+        if (!f.bothAgreed) {
+          severity = "unverified";
+          evidence.push({
+            source: "dual_verify:disagreement",
+            quote:
+              "Flagged by only one AI model during cross-check; the second model did not confirm this interaction. Needs review.",
+          });
+        }
+
         findings.push({
-          id: cuid(),
+          id: idFactory(),
           pairKey: pk,
           medAId: a.medId,
           medBId: b.medId,
@@ -187,14 +194,38 @@ export async function runInteractions(patientId: string): Promise<InteractionRun
     }
   }
 
-  await persistFindings(patientId, runId, findings);
-
   return {
     findings,
     checkedMedsCount: meds.length,
     ranAt: new Date().toISOString(),
     degraded,
   };
+}
+
+/** Prisma-tenant entry point: loads active medicines, runs the engine, persists. */
+export async function runInteractions(patientId: string): Promise<InteractionRunResult> {
+  const meds = await prisma.medication.findMany({
+    where: { patientId, status: "active" },
+  });
+
+  // Flatten salts, tracking which medication each belongs to.
+  const medSalts: MedSalt[] = [];
+  for (const m of meds) {
+    for (const s of parseSalts(m)) {
+      if (s.inn.trim()) {
+        medSalts.push({
+          medId: m.id,
+          brand: m.brandName,
+          inn: s.inn.toLowerCase(),
+          fdaSearchName: s.fdaSearchName || s.inn,
+        });
+      }
+    }
+  }
+
+  const result = await computeInteractions(meds, medSalts, cuid);
+  await persistFindings(patientId, cuid(), result.findings);
+  return result;
 }
 
 export function findDistinctMedicationPair(
@@ -224,12 +255,17 @@ function resolveEvidenceSalt(
   return match?.fdaSearchName.toLowerCase() ?? null;
 }
 
-async function runInteractionLLM(
+type NormalizedInteractionFinding = InteractionLLMResult["findings"][number] & {
+  /** True when both the primary provider and Gemini flagged this same salt pair. */
+  bothAgreed: boolean;
+};
+
+export async function runInteractionLLM(
   meds: { id: string; brandName: string }[],
   medSalts: MedSalt[],
   curated: Finding[],
   excerptBySalt: Map<string, string>,
-) {
+): Promise<NormalizedInteractionFinding[]> {
   const medList = meds.map((m) => ({
     brand: m.brandName,
     salts: medSalts.filter((s) => s.medId === m.id).map((s) => s.inn),
@@ -240,7 +276,9 @@ async function runInteractionLLM(
     .map(([salt, ex]) => `[source:openfda:${salt}]\n${ex.slice(0, 6000)}`)
     .join("\n\n");
 
-  const { findings } = await callLLM({
+  // Safety-critical call — dual-verify against Gemini (Arch §8.1). Every
+  // other callLLM(...) site in this codebase is untouched.
+  const dual = await callLLMDualVerify({
     system: INTERACTION_SYSTEM,
     content: [
       {
@@ -255,9 +293,36 @@ async function runInteractionLLM(
   });
 
   const validInns = new Set(medSalts.map((m) => m.inn));
-  return findings
-    .map((f) => ({ ...f, saltA: f.saltA.toLowerCase(), saltB: f.saltB.toLowerCase() }))
-    .filter((f) => validInns.has(f.saltA) && validInns.has(f.saltB) && f.saltA !== f.saltB);
+  const normalize = (list: InteractionLLMResult["findings"]) =>
+    list
+      .map((f) => ({ ...f, saltA: f.saltA.toLowerCase(), saltB: f.saltB.toLowerCase() }))
+      .filter((f) => validInns.has(f.saltA) && validInns.has(f.saltB) && f.saltA !== f.saltB);
+
+  const primaryFindings = normalize(dual.primary.findings);
+
+  if (!dual.secondary) {
+    // Gemini unconfigured/errored — degrade to single-provider behavior
+    // exactly as before dual-verify existed.
+    return primaryFindings.map((f) => ({ ...f, bothAgreed: true }));
+  }
+
+  const secondaryFindings = normalize(dual.secondary.findings);
+  const pairKeyOf2 = (a: string, b: string) => [a, b].sort().join("|");
+  const secondaryPairs = new Set(secondaryFindings.map((f) => pairKeyOf2(f.saltA, f.saltB)));
+  const primaryPairs = new Set(primaryFindings.map((f) => pairKeyOf2(f.saltA, f.saltB)));
+
+  const merged: NormalizedInteractionFinding[] = primaryFindings.map((f) => ({
+    ...f,
+    bothAgreed: secondaryPairs.has(pairKeyOf2(f.saltA, f.saltB)),
+  }));
+  // A pair Gemini flagged but the primary provider did not is still surfaced
+  // (never silently dropped) — just demoted, same as the reverse case.
+  for (const f of secondaryFindings) {
+    const pk = pairKeyOf2(f.saltA, f.saltB);
+    if (primaryPairs.has(pk)) continue; // already included above
+    merged.push({ ...f, bothAgreed: false });
+  }
+  return merged;
 }
 
 /** Replace unacknowledged findings; keep acknowledged ones (Arch §7.3). */

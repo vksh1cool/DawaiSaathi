@@ -48,6 +48,18 @@ const schema = z.object({
   OPENAI_DAILY_LLM_REQUEST_LIMIT: nonNegativeInt(12),
   OPENAI_DAILY_TTS_GENERATION_LIMIT: nonNegativeInt(12),
 
+  // Gemini is a second, independent AI provider used only to cross-check the
+  // safety-critical calls (drug-interaction checking and strip-photo
+  // extraction) alongside whichever provider AI_PROVIDER already selects.
+  // It is optional: when unset, dual-verify degrades to the single
+  // configured provider exactly like today. It never replaces AI_PROVIDER.
+  GEMINI_API_KEY: z.string().trim().optional(),
+  GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+  // Separate, smaller daily cap: dual-verify calls Gemini alongside (not
+  // instead of) the primary provider, so its budget is tracked independently
+  // rather than doubling consumption against OPENAI_DAILY_LLM_REQUEST_LIMIT.
+  GEMINI_DAILY_LLM_REQUEST_LIMIT: nonNegativeInt(6),
+
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),
@@ -73,9 +85,6 @@ const schema = z.object({
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_ANON_KEY: z.string().trim().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().trim().optional(),
-  // Supabase phone OTP requires an SMS provider or Send SMS Hook in the
-  // Supabase project. Keep it off until that delivery path is configured.
-  SUPABASE_PHONE_AUTH_ENABLED: bool(false),
   // Authentication and the tenant data adapter have separate rollout gates.
   // This must remain false until the migration/RLS test suite and every
   // patient-data route are on the Supabase path.
@@ -111,6 +120,7 @@ const isConfiguredSecret = (value: string | undefined) =>
 const openAiConfigured = isConfiguredSecret(env.OPENAI_API_KEY);
 const nimConfigured = isConfiguredSecret(env.NIM_API_KEY);
 const groqConfigured = isConfiguredSecret(env.GROQ_API_KEY);
+const geminiConfigured = isConfiguredSecret(env.GEMINI_API_KEY);
 const supabaseUrlConfigured = isConfiguredSecret(env.SUPABASE_URL);
 const supabaseAnonConfigured = isConfiguredSecret(env.SUPABASE_ANON_KEY);
 const configIssues: string[] = [];
@@ -184,6 +194,14 @@ export const config = {
   openAiDailyLlmRequestLimit: env.OPENAI_DAILY_LLM_REQUEST_LIMIT,
   openAiDailyTtsGenerationLimit: env.OPENAI_DAILY_TTS_GENERATION_LIMIT,
 
+  // Second AI provider used only for dual-verify on safety-critical calls
+  // (interactions + extraction). Disabled (skipped, not errored) when no key
+  // is configured, so existing single-provider behaviour is unaffected.
+  geminiEnabled: geminiConfigured,
+  geminiApiKey: geminiConfigured ? env.GEMINI_API_KEY! : null,
+  geminiModel: env.GEMINI_MODEL,
+  geminiDailyLlmRequestLimit: env.GEMINI_DAILY_LLM_REQUEST_LIMIT,
+
   twilioAccountSid: env.TWILIO_ACCOUNT_SID,
   twilioAuthToken: env.TWILIO_AUTH_TOKEN,
   twilioFromNumber: env.TWILIO_FROM_NUMBER,
@@ -203,7 +221,6 @@ export const config = {
   // Server-only. It is intentionally never exposed through a NEXT_PUBLIC_
   // variable and normal household requests must continue to use RLS.
   supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
-  supabasePhoneAuthEnabled: env.SUPABASE_PHONE_AUTH_ENABLED,
   supabaseTenantRuntimeReady: env.SUPABASE_TENANT_RUNTIME_READY,
   requireAccessGate: env.REQUIRE_ACCESS_GATE,
   openfdaApiKey: env.OPENFDA_API_KEY,

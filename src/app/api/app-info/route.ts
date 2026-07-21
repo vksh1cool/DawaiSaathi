@@ -3,24 +3,31 @@ import { config } from "@/lib/config";
 import { getHousehold } from "@/lib/household";
 import { withErrorBoundary } from "@/lib/errors";
 import { supabaseTenantRuntimeReady, usesSupabaseAuth } from "@/lib/cloudflare-runtime";
-import { getSupabaseUserId } from "@/lib/supabase/server";
+import { getSupabaseUserInfo } from "@/lib/supabase/server";
 import { getSupabaseHousehold } from "@/lib/supabase/household";
+import { getSupabasePublicConfig } from "@/lib/supabase/runtime";
 
 export const runtime = "nodejs";
 
 /** GET /api/app-info — client bootstrap flags. */
 export const GET = withErrorBoundary(async () => {
   if (usesSupabaseAuth()) {
-    const userId = await getSupabaseUserId();
-    const household = userId ? await getSupabaseHousehold() : null;
+    const user = await getSupabaseUserInfo();
+    const household = user ? await getSupabaseHousehold() : null;
+    // Safe for the browser: this is the publishable anon key, never the
+    // service-role credential, and Postgres RLS is what actually scopes
+    // access — see src/lib/supabase/client.ts.
+    const publicConfig = getSupabasePublicConfig();
     return NextResponse.json({
       demoMode: false,
       telephonyEnabled: config.telephonyEnabled,
       hasHousehold: !!household,
       authMode: "supabase",
-      signedIn: !!userId,
+      signedIn: !!user,
       tenantRuntimeReady: supabaseTenantRuntimeReady(),
-      phoneAuthEnabled: config.supabasePhoneAuthEnabled,
+      isAnonymous: user?.isAnonymous ?? false,
+      supabaseUrl: publicConfig?.url,
+      supabaseAnonKey: publicConfig?.anonKey,
     });
   }
 
@@ -32,6 +39,6 @@ export const GET = withErrorBoundary(async () => {
     authMode: "access_gate",
     signedIn: true,
     tenantRuntimeReady: false,
-    phoneAuthEnabled: false,
+    isAnonymous: false,
   });
 });

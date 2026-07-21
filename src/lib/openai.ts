@@ -151,8 +151,8 @@ export async function callLLM<T>(opts: LLMCompleteOpts & { zodSchema: z.ZodType<
   }
 }
 
-/** Defensive: strip ```json fences if a model wraps output. */
-function stripFences(s: string): string {
+/** Defensive: strip ```json fences if a model wraps output. Exported for reuse by dual-verify. */
+export function stripFences(s: string): string {
   const trimmed = s.trim();
   if (trimmed.startsWith("```")) {
     return trimmed.replace(/^```(?:json)?/, "").replace(/```$/, "").trim();

@@ -264,7 +264,7 @@ export function getAudioSet(call: ReminderCall): AudioSet {
   }
 }
 
-async function ensureAudioOrFallback(
+export async function ensureAudioOrFallback(
   text: string,
   language: CallLanguage,
   voiceGender: string,

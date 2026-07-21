@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { Card, PrimaryButton, Spinner } from "@/components/ui";
+import { Banner, Card, GhostButton, Spinner } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/provider";
 import { apiGet } from "@/lib/api-client";
 import { formatInr } from "@/lib/util/money";
@@ -33,12 +33,12 @@ export default function SavingsPage() {
     return (
       <AppShell>
         {error ? (
-          <Card tone="warn">
-            <p className="text-sm">{error}</p>
-            <PrimaryButton className="mt-3" onClick={() => void load()}>
+          <Banner tone="warn">
+            <p>{error}</p>
+            <GhostButton className="mt-3" onClick={() => void load()}>
               {t("common.tryAgain")}
-            </PrimaryButton>
-          </Card>
+            </GhostButton>
+          </Banner>
         ) : (
           <Spinner label={t("common.loading")} />
         )}

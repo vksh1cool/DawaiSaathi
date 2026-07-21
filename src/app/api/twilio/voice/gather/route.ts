@@ -1,6 +1,7 @@
 import { readWebhook, audioUrl, twilio, voiceLocale } from "@/lib/integrations/twilio";
 import { handleGatherResult, getAudioSet } from "@/lib/calls";
-import { legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
+import { usesSupabaseAuth, legacyTenantDataBlocked } from "@/lib/cloudflare-runtime";
+import { handleSupabaseGatherResult } from "@/lib/supabase/calls-admin";
 import { config } from "@/lib/config";
 import type { CallLanguage, TwilioVoiceLocale } from "@/lib/languages";
 
@@ -12,17 +13,21 @@ export async function POST(req: Request) {
   if (!valid) return new Response("invalid signature", { status: 403 });
 
   const vr = new twilio.twiml.VoiceResponse();
-  // Return valid TwiML so Twilio does not retry, but never let a Supabase
-  // rollout callback mutate the legacy global D1 reminder record.
-  if (legacyTenantDataBlocked()) {
-    vr.hangup();
-    return xml(vr);
-  }
-
   const callId = new URL(req.url).searchParams.get("callId")!;
   const digits = params.Digits ?? "";
 
-  const result = await handleGatherResult(callId, digits);
+  let result: { action: "confirmed" | "repeat" | "noinput"; call: any } | null;
+  if (usesSupabaseAuth()) {
+    result = await handleSupabaseGatherResult(callId, digits);
+  } else {
+    // Return valid TwiML so Twilio does not retry, but never let a Supabase
+    // rollout callback mutate the legacy global D1 reminder record.
+    if (legacyTenantDataBlocked()) {
+      vr.hangup();
+      return xml(vr);
+    }
+    result = await handleGatherResult(callId, digits);
+  }
   if (!result) {
     vr.hangup();
     return xml(vr);

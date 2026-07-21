@@ -80,6 +80,11 @@
     "PUBLIC_BASE_URL": "https://dawaisaathi.pages.dev",
     "NEXT_INC_CACHE_R2_PREFIX": "next-incremental-cache",
     "REQUIRE_ACCESS_GATE": "false",
+    // Explicit so a local `.env` used for Supabase-auth dev work can never
+    // leak into this Worker's process.env defaults at build time (see
+    // src/lib/cloudflare-runtime.ts's getRuntimeValue docs for the mechanism).
+    "AUTH_DRIVER": "access_gate",
+    "SUPABASE_TENANT_RUNTIME_READY": "false",
     "DEFAULT_TZ": "Asia/Kolkata",
     "DEMO_MODE": "false",
     "WORKER_TICK_SECONDS": "60",

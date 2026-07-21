@@ -3,12 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Camera, AlertTriangle, IndianRupee, Settings } from "lucide-react";
+import { Home, Camera, AlertTriangle, IndianRupee, Settings, Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { useAppInfo } from "@/lib/app-info";
 import { apiJson } from "@/lib/api-client";
 import { useTimedMessage } from "@/lib/use-timed-message";
-import { Toast } from "@/components/ui";
+import { Toast, Banner } from "@/components/ui";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { FeedbackLauncher } from "./FeedbackLauncher";
@@ -102,6 +102,15 @@ export function AppShell({
           </Link>
         </div>
       </header>
+
+      {/* Demo mode (anonymous session) */}
+      {info?.isAnonymous && (
+        <div className="px-4 pt-3">
+          <Banner tone="info" icon={<Sparkles size={18} aria-hidden="true" />}>
+            {t("demo.bannerBody")}
+          </Banner>
+        </div>
+      )}
 
       {/* Content */}
       <main id="main-content" className="flex-1 px-4 pb-[calc(9rem_+_env(safe-area-inset-bottom))] pt-4">{children}</main>

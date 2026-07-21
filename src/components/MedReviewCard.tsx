@@ -5,6 +5,7 @@ import { Card } from "@/components/ui";
 import { ConfidenceField } from "@/components/ConfidenceField";
 import { HighRiskBanner } from "@/components/HighRiskBanner";
 import { PackCheckCard } from "@/components/PackCheckCard";
+import { AuthenticityCard } from "@/components/AuthenticityCard";
 import { useI18n } from "@/lib/i18n/provider";
 import { expiryStatus } from "@/lib/util/dates";
 import type { DraftMedication, Salt, MedForm, StrengthUnit } from "@/types/domain";
@@ -182,6 +183,19 @@ export function MedReviewCard({
       />
 
       <PackCheckCard draft={draft} />
+
+      <AuthenticityCard
+        collapsible
+        input={{
+          brandName: draft.brandName,
+          manufacturer: draft.manufacturer,
+          mrpInr: draft.mrpInr,
+          expiryDate: draft.expiryDate,
+          batchNumber: draft.batchNumber,
+          form: draft.form,
+          salts: draft.salts,
+        }}
+      />
 
       {draft.highRisk && <HighRiskBanner name={draft.brandName ?? draft.displayGeneric} />}
 

@@ -38,14 +38,28 @@ export const POST = withErrorBoundary(async (request: Request) => {
   const subject = parsed.kind === "appreciation"
     ? "DawaiSaathi appreciation"
     : "DawaiSaathi improvement request";
-  await email.send({
-    to: TO,
-    from: { email: FROM, name: "DawaiSaathi feedback" },
-    ...(parsed.email ? { replyTo: parsed.email } : {}),
-    subject,
-    text: feedbackText(parsed),
-    html: feedbackHtml(parsed),
-  });
+  try {
+    await email.send({
+      to: TO,
+      from: { email: FROM, name: "DawaiSaathi feedback" },
+      ...(parsed.email ? { replyTo: parsed.email } : {}),
+      subject,
+      text: feedbackText(parsed),
+      html: feedbackHtml(parsed),
+    });
+  } catch (err) {
+    // The binding throws (rather than returning an error) when the sender
+    // domain hasn't been onboarded onto Cloudflare Email Sending yet, among
+    // other delivery failures. Surface a specific, logged, actionable error
+    // instead of letting this fall through to the generic 500 handler, which
+    // would hide the real cause.
+    logger.error({ err }, "feedback email send failed");
+    throw new AppError(
+      "FEEDBACK_UNAVAILABLE",
+      "We couldn't send that feedback right now. Please try again later.",
+      err,
+    );
+  }
 
   // Never log the free-text feedback, reply email, patient details, or a
   // message body. Product analytics only needs the category and locale.

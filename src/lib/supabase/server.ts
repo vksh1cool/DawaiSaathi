@@ -37,14 +37,23 @@ export async function createSupabaseServerClient() {
   });
 }
 
+export type SupabaseUserInfo = { id: string; isAnonymous: boolean };
+
 /**
  * Validates the request JWT before an authenticated route derives a tenant.
- * `getClaims()` verifies the token; `getSession()` alone is not an identity
- * check because its cookie payload is not trusted input.
+ * `getUser()` re-verifies the token against the Auth server; `getSession()`
+ * alone is not an identity check because its cookie payload is not trusted
+ * input. Also surfaces `is_anonymous` so callers can gate demo-mode UI
+ * without a second round trip.
  */
-export async function getSupabaseUserId(): Promise<string | null> {
+export async function getSupabaseUserInfo(): Promise<SupabaseUserInfo | null> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.getUser();
   if (error || !data?.user?.id) return null;
-  return data.user.id;
+  return { id: data.user.id, isAnonymous: data.user.is_anonymous === true };
+}
+
+export async function getSupabaseUserId(): Promise<string | null> {
+  const info = await getSupabaseUserInfo();
+  return info?.id ?? null;
 }

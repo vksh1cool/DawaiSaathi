@@ -32,7 +32,7 @@ async function requireTenant(client: SupabaseClient): Promise<TenantHousehold & 
   return household as TenantHousehold & { patient: NonNullable<TenantHousehold["patient"]> };
 }
 
-function relation(value: unknown): SupabaseRow {
+export function relation(value: unknown): SupabaseRow {
   if (Array.isArray(value)) return relation(value[0]);
   return value && typeof value === "object" ? (value as SupabaseRow) : {};
 }

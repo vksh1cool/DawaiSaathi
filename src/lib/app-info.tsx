@@ -10,7 +10,11 @@ export type AppInfo = {
   authMode?: "access_gate" | "supabase";
   signedIn?: boolean;
   tenantRuntimeReady?: boolean;
-  phoneAuthEnabled?: boolean;
+  /** True when the signed-in Supabase user is an anonymous demo session. */
+  isAnonymous?: boolean;
+  /** Publishable Supabase config for the browser client (authMode "supabase" only). */
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
 };
 
 const AppInfoContext = createContext<{

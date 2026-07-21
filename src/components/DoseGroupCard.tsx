@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, CalendarX, CheckCircle2, Circle, PhoneCall } from "lucide-react";
-import { Card, GhostButton } from "@/components/ui";
+import { Card, GhostButton, Badge } from "@/components/ui";
 import { HighRiskBanner } from "@/components/HighRiskBanner";
 import { useI18n } from "@/lib/i18n/provider";
 import { pretty12h, slotKeyForTime } from "@/lib/util/dates";
@@ -11,6 +11,7 @@ export function DoseGroupCard({
   group,
   patientName,
   demoMode,
+  dueNow = false,
   onCallNow,
   onSimulate,
   onMark,
@@ -18,19 +19,20 @@ export function DoseGroupCard({
   group: TodayGroup;
   patientName: string;
   demoMode: boolean;
+  dueNow?: boolean;
   onCallNow: (time: string) => void;
   onSimulate: (time: string) => void;
   onMark: (group: TodayGroup) => void;
 }) {
   const { t, lang } = useI18n();
   const slot = slotKeyForTime(group.time);
-  const medNames = group.meds.map((m) => m.brandName).join(" · ");
   const highRiskMeds = group.meds.filter((med) => med.highRisk);
   const expiredMeds = group.meds.filter((med) => med.expiryStatus === "expired");
   const expiringMeds = group.meds.filter((med) => med.expiryStatus === "expiring");
+  const isDueNow = dueNow && group.status === "upcoming";
 
   const tone =
-    group.status === "confirmed" ? "success" : group.status === "not_confirmed" ? "warn" : "surface";
+    group.status === "confirmed" ? "success" : group.status === "not_confirmed" ? "warn" : isDueNow ? "warn" : "surface";
   const Icon =
     group.status === "confirmed" ? CheckCircle2 : group.status === "not_confirmed" ? AlertTriangle : Circle;
   const iconColor =
@@ -48,8 +50,17 @@ export function DoseGroupCard({
         <span className="text-sm text-[var(--color-text-muted)]">
           · {t(`schedule.${slot}`)} · {t("home.medsCount", { n: group.meds.length })}
         </span>
+        {isDueNow && (
+          <span className="animate-pulse rounded-full bg-[var(--color-warn-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--color-warn)]">
+            {t("alarms.dueNowBadge")}
+          </span>
+        )}
       </div>
-      <p className="text-sm text-[var(--color-text)]">{medNames}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {group.meds.map((med) => (
+          <Badge key={med.medicationId}>{med.brandName}</Badge>
+        ))}
+      </div>
 
       {highRiskMeds.map((med) => (
         <HighRiskBanner key={`risk-${med.medicationId}`} name={med.brandName} />

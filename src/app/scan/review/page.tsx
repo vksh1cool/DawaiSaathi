@@ -10,7 +10,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { apiJson, ApiError } from "@/lib/api-client";
 import type { DraftMedication } from "@/types/domain";
 
-type ScanResult = { scanBatchId: string; medications: DraftMedication[]; imageIssues: string[] };
+type ScanResult = { scanBatchId: string | null; medications: DraftMedication[]; imageIssues: string[] };
 
 let manualCounter = 0;
 const emptyDraft = (): DraftMedication => ({
@@ -48,7 +48,9 @@ export default function ReviewPage() {
     }
     try {
       const parsed = JSON.parse(raw) as ScanResult;
-      if (!parsed.scanBatchId || !Array.isArray(parsed.medications) || !Array.isArray(parsed.imageIssues)) {
+      // scanBatchId is null for a medicine-picker session — it has no photo-derived scan
+      // batch to claim/confirm, unlike a photo-scan session (see confirm() below).
+      if (!Array.isArray(parsed.medications) || !Array.isArray(parsed.imageIssues)) {
         throw new Error("Invalid scan session");
       }
       setScan(parsed);
@@ -83,7 +85,7 @@ export default function ReviewPage() {
         return;
       }
       await apiJson("/api/medications", "POST", {
-        scanBatchId: scan?.scanBatchId,
+        ...(scan?.scanBatchId ? { scanBatchId: scan.scanBatchId } : {}),
         medications: cleaned,
         reviewedAgainstPrescription: true,
       });

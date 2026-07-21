@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, User, Languages, Settings, Phone, Trash2, Power } from "lucide-react";
+import { ArrowLeft, User, Languages, Settings, Phone, Trash2, Power, Bell, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { AppLanguageSelect } from "@/components/AppLanguageSelect";
@@ -21,6 +21,12 @@ import {
 } from "@/lib/onboarding";
 import { useTimedMessage } from "@/lib/use-timed-message";
 import { isSmsReminderLanguage, type AppLanguage, type CallLanguage } from "@/lib/languages";
+import {
+  getNotificationPermission,
+  getRemindersEnabled,
+  requestRemindersPermission,
+  setRemindersEnabled,
+} from "@/lib/alarms";
 
 type Household = {
   caregiverName: string;
@@ -56,6 +62,8 @@ export default function ProfilePage() {
   const [confirmationError, setConfirmationError] = useState<string | null>(null);
   const [phoneRegion, setPhoneRegion] = useState<DialingRegionCode>("IN");
   const [phoneInput, setPhoneInput] = useState("");
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("unsupported");
+  const [remindersEnabled, setRemindersEnabledState] = useState(false);
   const { message, showMessage } = useTimedMessage();
   const savedHouseholdRef = useRef<Household | null>(null);
 
@@ -79,6 +87,30 @@ export default function ProfilePage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    setNotifPermission(getNotificationPermission());
+    setRemindersEnabledState(getRemindersEnabled());
+  }, []);
+
+  const toggleReminders = async (checked: boolean) => {
+    if (!checked) {
+      setRemindersEnabled(false);
+      setRemindersEnabledState(false);
+      return;
+    }
+    let permission = notifPermission;
+    if (permission === "default") {
+      permission = await requestRemindersPermission();
+      setNotifPermission(permission);
+    }
+    if (permission === "granted") {
+      setRemindersEnabled(true);
+      setRemindersEnabledState(true);
+    } else {
+      showMessage(t("alarms.permissionError"));
+    }
+  };
 
   const handleSave = async (updates: HouseholdPatch) => {
     if (!household) return;
@@ -354,6 +386,48 @@ export default function ProfilePage() {
             />
           </div>
         </Card>
+
+        <Card>
+          <div className="mb-4 flex items-center gap-2 font-semibold text-[var(--color-text)]">
+            <Bell size={18} className="text-[var(--color-primary)]" />
+            {t("alarms.permissionTitle")}
+          </div>
+          {notifPermission === "unsupported" ? (
+            <p className="text-sm text-[var(--color-text-muted)]">{t("alarms.unsupported")}</p>
+          ) : notifPermission === "denied" ? (
+            <p className="text-sm text-[var(--color-text-muted)]">{t("alarms.blocked")}</p>
+          ) : (
+            <label className="flex min-h-[60px] cursor-pointer items-start gap-3 rounded-[12px] bg-[var(--color-bg)] p-3 ring-1 ring-[var(--color-border)]">
+              <input
+                type="checkbox"
+                checked={notifPermission === "granted" && remindersEnabled}
+                onChange={(e) => void toggleReminders(e.target.checked)}
+                className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-[var(--color-text)]">{t("alarms.toggleLabel")}</span>
+                <span className="mt-1 block text-xs leading-5 text-[var(--color-text-muted)]">
+                  {t("alarms.permissionBody")}
+                </span>
+              </span>
+            </label>
+          )}
+        </Card>
+
+        {info?.authMode === "supabase" && (
+          <Card>
+            <div className="mb-4 flex items-center gap-2 font-semibold text-[var(--color-text)]">
+              <UsersRound size={18} className="text-[var(--color-primary)]" />
+              {t("household.profileCardTitle")}
+            </div>
+            <p className="mb-4 text-sm leading-6 text-[var(--color-text-muted)]">
+              {t("household.profileCardBody")}
+            </p>
+            <Link href="/household/members">
+              <GhostButton className="w-full">{t("household.manageMembers")}</GhostButton>
+            </Link>
+          </Card>
+        )}
 
         <Card>
           <div className="mb-4 flex items-center gap-2 font-semibold text-[var(--color-danger)]">

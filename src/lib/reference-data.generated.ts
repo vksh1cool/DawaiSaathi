@@ -384,6 +384,116 @@ export const referenceRows = {
       "form": "tablet",
       "pack_size": "15",
       "mrp_inr": "72.00"
+    },
+    {
+      "brand_name": "Aciloc 300",
+      "manufacturer": "Cadila Healthcare",
+      "generic_name": "ranitidine",
+      "strength_value": "300",
+      "strength_unit": "mg",
+      "form": "tablet",
+      "pack_size": "10",
+      "mrp_inr": "26.00"
+    },
+    {
+      "brand_name": "Crocin 500",
+      "manufacturer": "GSK",
+      "generic_name": "paracetamol",
+      "strength_value": "500",
+      "strength_unit": "mg",
+      "form": "tablet",
+      "pack_size": "15",
+      "mrp_inr": "18.50"
+    },
+    {
+      "brand_name": "Foracort 200 Rotacap",
+      "manufacturer": "Cipla",
+      "generic_name": "budesonide + formoterol",
+      "strength_value": "200",
+      "strength_unit": "mcg",
+      "form": "other",
+      "pack_size": "30",
+      "mrp_inr": "285.00"
+    },
+    {
+      "brand_name": "Thyronorm 25mcg",
+      "manufacturer": "Abbott",
+      "generic_name": "levothyroxine",
+      "strength_value": "25",
+      "strength_unit": "mcg",
+      "form": "tablet",
+      "pack_size": "100",
+      "mrp_inr": "131.00"
+    },
+    {
+      "brand_name": "Voveran 50",
+      "manufacturer": "Novartis",
+      "generic_name": "diclofenac",
+      "strength_value": "50",
+      "strength_unit": "mg",
+      "form": "tablet",
+      "pack_size": "20",
+      "mrp_inr": "29.00"
+    },
+    {
+      "brand_name": "Spasril",
+      "manufacturer": "Franco-Indian Pharmaceuticals",
+      "generic_name": "dicyclomine + paracetamol",
+      "strength_value": "10",
+      "strength_unit": "mg",
+      "form": "tablet",
+      "pack_size": "20",
+      "mrp_inr": "32.00"
+    },
+    {
+      "brand_name": "Nozia 10",
+      "manufacturer": "Alkem",
+      "generic_name": "domperidone",
+      "strength_value": "10",
+      "strength_unit": "mg",
+      "form": "tablet",
+      "pack_size": "10",
+      "mrp_inr": "22.00"
+    },
+    {
+      "brand_name": "Augmentin 625 Duo",
+      "manufacturer": "GlaxoSmithKline",
+      "generic_name": "amoxicillin + clavulanic acid",
+      "strength_value": "625",
+      "strength_unit": "mg",
+      "form": "tablet",
+      "pack_size": "6",
+      "mrp_inr": "223.00"
+    },
+    {
+      "brand_name": "Glycomet GP 1",
+      "manufacturer": "USV",
+      "generic_name": "metformin + glimepiride",
+      "strength_value": "500",
+      "strength_unit": "mg",
+      "form": "tablet",
+      "pack_size": "20",
+      "mrp_inr": "95.00"
+    },
+    {
+      "brand_name": "Azithral 500",
+      "manufacturer": "Alembic Pharmaceuticals",
+      "generic_name": "azithromycin",
+      "strength_value": "500",
+      "strength_unit": "mg",
+      "form": "tablet",
+      "pack_size": "5",
+      "mrp_inr": "132.00"
+    },
+    {
+      "brand_name": "Duphalac",
+      "manufacturer": "Abbott",
+      "generic_name": "lactulose",
+      "strength_value": "",
+      "strength_unit": "",
+      "form": "syrup",
+      "pack_size": "200",
+      "mrp_inr": "145.00"
     }
   ],
   "highrisk_meds": [

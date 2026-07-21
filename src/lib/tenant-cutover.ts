@@ -10,10 +10,10 @@ export const SUPABASE_STAGING_API_PATHS = ["/api/household"] as const;
 export const SUPABASE_PENDING_WORKSPACE_PATHS = [] as const;
 
 export const SUPABASE_PENDING_HEALTH_API_PATHS = [
-  "/api/calls",
-  "/api/interactions/run",
+  // /api/simulate stays pending: it is dev/QA tooling for simulating a call
+  // outcome without dialing Twilio (/api/simulate/start, /api/simulate/digits)
+  // and has no Supabase-tenant branch yet — intentionally out of scope.
   "/api/simulate",
-  "/api/tts/preview",
 ] as const;
 
 function pathMatches(pathname: string, prefix: string): boolean {

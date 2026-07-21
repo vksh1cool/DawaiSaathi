@@ -5,16 +5,29 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
  * deployed OpenNext Worker, bindings live on the current request context —
  * they are not guaranteed to be mirrored onto `process.env`. Node development
  * and unit tests intentionally retain the normal environment fallback.
+ *
+ * Inside an actual Worker request (getCloudflareContext() succeeds), this
+ * must NOT fall through to `process.env` for a var that simply isn't set in
+ * wrangler.jsonc's `vars`. OpenNext bakes whatever `.env*` files were present
+ * on the machine that ran `opennextjs-cloudflare build` into
+ * `.open-next/cloudflare/next-env.mjs`, and applies those as `process.env`
+ * defaults (`??=`) at Worker startup for any key the Cloudflare binding
+ * didn't already provide. A developer's local `.env` (e.g. `AUTH_DRIVER=supabase`
+ * for testing the Supabase rollout) would then silently override the
+ * intentional absence of that var in wrangler.jsonc once deployed — flipping
+ * feature flags like `usesSupabaseAuth()` on in production. Only fall back to
+ * `process.env` when there is no Cloudflare request context at all (local
+ * `next dev`/build/tests), matching the comment above.
  */
 export function getRuntimeValue(name: string): string | undefined {
   try {
     const env = getCloudflareContext().env as unknown as Record<string, unknown>;
     const value = env[name];
-    if (typeof value === "string") return value;
+    return typeof value === "string" ? value : undefined;
   } catch {
     // There is no Worker request context during local Node work and build time.
+    return process.env[name];
   }
-  return process.env[name];
 }
 
 export const usesD1 = () => getRuntimeValue("DATABASE_DRIVER") === "d1";
