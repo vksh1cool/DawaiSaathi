@@ -46,7 +46,8 @@ graph TD
 
     subgraph AI & Verification
         A --> B[Groq API<br/>Llama-4-Scout Vision]
-        A --> C2[OpenAI GPT-4o-mini-tts<br/>Voice Generation]
+        A --> HF[Hugging Face Inference API<br/>VITS / MMS SOTA Voice Engine]
+        A --> C2[Gemini / OpenAI TTS<br/>Voice Generation Fallbacks]
         A --> D[openFDA API<br/>Label Grounding]
     end
 
@@ -56,9 +57,9 @@ graph TD
         A --> I[(Dedicated R2 + Durable Object<br/>OpenNext incremental cache)]
     end
 
-    subgraph Production data cutover (gated)
-        A -. authenticated, RLS-scoped .-> S[(Supabase Postgres + Auth)]
-        S -. tenant policies .-> H[Households / members / medication records]
+    subgraph Production data cutover
+        A -.- S[(Supabase Postgres + Auth)]
+        S -.- H[Households / members / medication records]
     end
 ```
 
@@ -139,30 +140,20 @@ The floating feedback button asks for one short thing to improve or one short th
 - **Production data target**: Supabase Postgres + Auth + RLS, with a migration and rollout gates in [`supabase/`](supabase/).
 - **Storage**: Private Cloudflare R2 for photos and generated TTS audio; private routes use `no-store` rather than public object URLs.
 - **Styling**: Tailwind CSS 4.x with a custom accessibility-first design system.
-- **AI**: Groq API (`llama-4-scout` for structured extraction, `llama-3.3-70b` for logic), OpenAI API (`gpt-4o-mini-tts` for voice).
+- **Framework**: Next.js 15 (App Router) running on Cloudflare Workers (via OpenNext).
+- **Language**: TypeScript (strict).
+- **Data runtime**: SQLite locally / Supabase Postgres + Auth + RLS / Cloudflare D1.
+- **Storage**: Private Cloudflare R2 for photos and generated TTS audio; private routes use `no-store` rather than public object URLs.
+- **Styling**: Tailwind CSS 4.x with a custom accessibility-first design system.
+- **AI & Voice Engines**: Groq API (`llama-4-scout` for structured extraction, `llama-3.3-70b` for logic), Hugging Face Inference API (`espnet/kan-bayashi_ljspeech_vits` & `facebook/mms-tts-eng` SOTA voice models), Gemini Native TTS & OpenAI TTS fallbacks.
 - **Telephony**: Twilio Programmable Voice (TwiML).
-- **Android**: Trusted Web Activity generated with Bubblewrap; no production `server.url` WebView wrapper.
+- **Android**: Trusted Web Activity generated with Bubblewrap; automated signed APK releases (`arm64-v8a` & `armeabi-v7a`).
 
 ---
 
 ## 📱 Android APK and GitHub Releases
 
-The Android app is versioned from [`android/twa-manifest.json`](android/twa-manifest.json) and opens the same production origin, `https://dawaisaathi.pages.dev`. The release workflow produces both a signed APK and an Android App Bundle (AAB), attaches SHA-256 checksums, and creates a GitHub Release for each `vX.Y.Z` tag.
-
-Before the first release, configure these once:
-
-1. Generate one long-lived Android signing keystore. Keep it secure; every future update must use the same key.
-2. Put its SHA-256 certificate fingerprint in the Worker as `ANDROID_APP_CERT_SHA256`, deploy, and confirm `/.well-known/assetlinks.json` returns the package `com.vksh1cool.dawaisaathi` and that fingerprint.
-3. Add repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
-4. Add the same public SHA-256 fingerprint as the repository variable `ANDROID_APP_CERT_SHA256`.
-5. Push a tag such as `v1.0.0`:
-
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-
-The workflow fails closed if signing material or the live Android trust relationship is absent, so it never publishes an unsigned or unverified release. See [`android/README.md`](android/README.md) for local regeneration and build details.
+The Android app is versioned from [`android/twa-manifest.json`](android/twa-manifest.json) and opens the production origin `https://dawaisaathi.pages.dev`. The release workflow produces signed APKs (`arm64-v8a` & `armeabi-v7a`) and an Android App Bundle (AAB), attaches SHA-256 checksums, and creates a GitHub Release for each `vX.Y.Z` tag (current release: **v1.1.0**).
 
 ---
 
@@ -171,19 +162,19 @@ The workflow fails closed if signing material or the live Android trust relation
 DawaiSaathi includes a built-in demo persona: **Kamla Devi**.
 To experience the app as a caregiver setting up medicines for an elderly patient:
 1. The UI will guide you through scanning a demo medicine strip, checking interactions, and initiating a simulated phone call.
-2. You can hear exactly what Kamla Devi hears in Hindi and confirm the dose by pressing 1.
+2. You can hear exactly what Kamla Devi hears in Hindi with warm humanizer voice instructions and confirm the dose by pressing 1.
 
 ---
 
-## 🗺️ Roadmap
+## 🗺️ Roadmap & Status
 
-| Feature | Why it matters |
-|---------|----------------|
-| **WhatsApp Bot Integration** | Send text-based alerts to the caregiver if a dose is missed, without requiring them to check the dashboard. |
-| **Regional Language Expansion** | Expand beyond the current multilingual call setup with reviewed scripts, supported TTS, and regional delivery tests. |
-| **Supabase tenant rollout** | Apply and test phone/email caregiver auth, household RLS, invitations, and the full data-adapter migration before real household data is accepted. |
-| **Android APK (TWA)** | Signed release pipeline is ready; configure the release key and publish the first verified `vX.Y.Z` artifact. |
-| **Pharmacy Ordering** | Direct integration to re-order medicines when a strip is running low. |
-| **Household switching** | Safely expose multi-household switching after medicine, reminder, media, and webhook routes are tenant-scoped. |
+| Feature | Status | Details |
+|---------|--------|---------|
+| **Android APK (TWA)** | ✅ **Live (`v1.1.0`)** | Automated signed release pipeline building `arm64-v8a` & `armeabi-v7a` APKs on GitHub Releases. |
+| **Supabase Tenant Architecture** | ✅ **Live** | Supabase Auth, household RLS security policies, caregiver invitations, and Postgres data layer fully integrated. |
+| **Hugging Face SOTA Voice Engine** | ✅ **Live** | Free open-source TTS voice models (`espnet/kan-bayashi_ljspeech_vits` & `facebook/mms-tts-eng`) with automatic cold-boot retry. |
+| **Jan Aushadhi Kendra Locator** | ✅ **Live** | Direct integrated store locator linking to `https://janaushadhi.gov.in`. |
+| **WhatsApp Bot Integration** | ⏳ Planned | Send text-based alerts to the caregiver if a dose is missed. |
+| **Pharmacy Ordering** | ⏳ Planned | Direct integration to re-order medicines when a strip is running low. |
 
 *Have an idea to improve DawaiSaathi? Open an issue or submit a pull request!*
