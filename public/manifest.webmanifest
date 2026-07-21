@@ -3,11 +3,14 @@
   "name": "DawaiSaathi — दवाई साथी",
   "short_name": "DawaiSaathi",
   "description": "Medicine reminders, safety checks, and savings for every phone.",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["medical", "health", "lifestyle"],
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
-  "orientation": "any",
+  "orientation": "portrait",
   "launch_handler": {
     "client_mode": "navigate-existing"
   },

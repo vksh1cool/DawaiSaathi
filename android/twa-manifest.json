@@ -24,8 +24,8 @@
     "path": "android.keystore",
     "alias": "dawaisaathi"
   },
-  "appVersionCode": 1000006,
-  "appVersion": "1.0.6",
+  "appVersionCode": 1000007,
+  "appVersion": "1.0.7",
   "webManifestUrl": "https://dawaisaathi.pages.dev/manifest.webmanifest",
   "fullScopeUrl": "https://dawaisaathi.pages.dev/",
   "fallbackType": "customtabs",
