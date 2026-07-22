@@ -1,4 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { config } from "@/lib/config";
 
 /**
  * Runtime switches are explicit rather than inferred from a hostname. On a
@@ -48,6 +49,50 @@ export const supabaseTenantRuntimeReady = () => getRuntimeValue("SUPABASE_TENANT
  * legacy call sites rather than making this helper return false.
  */
 export const legacyTenantDataBlocked = () => usesSupabaseAuth();
+
+const isRealSecret = (value: string | null | undefined): value is string =>
+  !!value && !/^(replace|your[-_ ]|<|changeme|example)/i.test(value.trim());
+
+/**
+ * Ordered list of Gemini API keys, resolved at REQUEST time.
+ *
+ * `config` (src/lib/config.ts) is frozen from `process.env` at module load.
+ * That is correct locally, but on a deployed OpenNext Worker the live keys are
+ * delivered on the request-scoped Cloudflare secret binding
+ * (`wrangler secret put GEMINI_API_KEY` / `GEMINI_API_KEY_2`) — which is NOT
+ * present on `process.env` when config.ts is first evaluated. Reading the
+ * binding here (with the build-time config value as a fallback for local dev,
+ * tests, and secrets that happen to be baked in) is what makes the deployed
+ * scan/TTS actually see a key. Two keys give the router a failover path so a
+ * single rate-limited or quota-capped key cannot break a live demo.
+ */
+export function getGeminiApiKeys(): string[] {
+  const candidates = [
+    getRuntimeValue("GEMINI_API_KEY") ?? config.geminiApiKey,
+    getRuntimeValue("GEMINI_API_KEY_2") ?? config.geminiApiKey2,
+  ];
+  const seen = new Set<string>();
+  const keys: string[] = [];
+  for (const candidate of candidates) {
+    if (!isRealSecret(candidate)) continue;
+    const key = candidate.trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    keys.push(key);
+  }
+  return keys;
+}
+
+/** True when at least one usable Gemini key is available in this request. */
+export const geminiEnabledAtRuntime = (): boolean => getGeminiApiKeys().length > 0;
+
+/** Gemini text/vision model, request-time (binding first, config fallback). */
+export const getGeminiModel = (): string =>
+  getRuntimeValue("GEMINI_MODEL") ?? config.geminiModel;
+
+/** Gemini native-TTS model, request-time (binding first, config fallback). */
+export const getGeminiTtsModel = (): string =>
+  getRuntimeValue("GEMINI_TTS_MODEL") ?? config.geminiTtsModel;
 
 export function getD1Binding(): D1Database {
   const db = getCloudflareContext().env.DAWAISAATHI_DB;

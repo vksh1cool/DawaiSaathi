@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { config } from "@/lib/config";
+import { geminiEnabledAtRuntime, getGeminiTtsModel } from "@/lib/cloudflare-runtime";
+import { GeminiHttpError, runWithGeminiKeys } from "@/lib/gemini-router";
 import { openAiTts } from "@/lib/openai";
 import { reserveOpenAiRequest } from "@/lib/openai-budget";
 import { logger } from "@/lib/logger";
@@ -15,14 +17,18 @@ import { hasPrivateAsset, putPrivateAsset } from "@/lib/storage";
 // genuinely human, tender, unhurried voice — the emotion lives here, so the
 // spoken scripts can stay factual and safe.
 export const TTS_INSTRUCTIONS =
-  "Read the following aloud like a warm, loving daughter gently reminding her elderly mother to take her medicine. " +
-  "Speak slowly, softly and very clearly, with real tenderness, patience and a caring smile in your voice — " +
-  "never robotic, flat or rushed. Pause naturally between each medicine, and pronounce every medicine name slowly, " +
-  "syllable by syllable, so it is easy for an older person to hear and follow.";
+  "You are the patient's own loving adult daughter, gently reminding your elderly parent to take their medicine. " +
+  "Speak with genuine warmth, tenderness and an unhurried, caring smile in your voice — never robotic, flat, clinical or rushed. " +
+  "Begin softly and affectionately, as if sitting beside them holding their hand. " +
+  "Modulate naturally: lift your tone with encouragement, soften it with reassurance, and let real affection colour every phrase. " +
+  "Speak slowly and very clearly at a calm, elderly-friendly pace. " +
+  "Pause naturally between sentences and between each medicine, giving them time to follow. " +
+  "Pronounce every medicine name gently and distinctly, syllable by syllable, so it is easy for an older person to hear and understand. " +
+  "Close with warm, patient encouragement so they feel cared for, safe and never rushed.";
 
 // Bump when the voice, model, or style prompt changes so the content-addressed
 // cache regenerates instead of serving audio in the previous voice.
-const VOICE_PROFILE_VERSION = "v2-gemini-warm";
+const VOICE_PROFILE_VERSION = "v3-gemini-empathetic";
 
 // A generated clip plus its true media type (mp3 vs wav), so the delivery
 // route can serve the right Content-Type for each provider.
@@ -46,7 +52,7 @@ type TtsProvider = "huggingface" | "gemini" | "openai";
  * optional paid last resort when a key is present. */
 function ttsProviderChain(): TtsProvider[] {
   const chain: TtsProvider[] = [];
-  if (config.geminiTtsEnabled) chain.push("gemini");
+  if (geminiEnabledAtRuntime()) chain.push("gemini");
   if (openAiTts) chain.push("openai");
   return chain;
 }
@@ -65,7 +71,7 @@ function voiceForProvider(provider: TtsProvider, gender: string): string {
 
 function modelForProvider(provider: TtsProvider): string {
   if (provider === "huggingface") return "huggingface-inference";
-  return provider === "gemini" ? config.geminiTtsModel : config.ttsModel;
+  return provider === "gemini" ? getGeminiTtsModel() : config.ttsModel;
 }
 
 /** Wrap raw signed-16-bit-LE mono PCM in a minimal WAV container. */
@@ -103,48 +109,53 @@ type GeminiTtsResponse = {
  * empty (finishReason OTHER) response, so retry a few times with backoff —
  * a demo reminder should not fail on the first transient miss. */
 async function geminiTts(text: string, voice: string): Promise<Clip> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiTtsModel}:generateContent`;
-  const backoffs = [1500, 4000, 8000];
-  let lastDetail = "";
-  for (let attempt = 0; attempt <= backoffs.length; attempt++) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": config.geminiApiKey ?? "",
-      },
-      body: JSON.stringify({
-        // Directorial style prompt shapes delivery; the model speaks only the
-        // text and in whatever language the text is written in.
-        contents: [{ parts: [{ text: `${TTS_INSTRUCTIONS}\n\n${text}` }] }],
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
-        },
-      }),
-    });
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${getGeminiTtsModel()}:generateContent`;
+  const requestBody = JSON.stringify({
+    // Directorial style prompt shapes delivery; the model speaks only the
+    // text and in whatever language the text is written in.
+    contents: [{ parts: [{ text: `${TTS_INSTRUCTIONS}\n\n${text}` }] }],
+    generationConfig: {
+      responseModalities: ["AUDIO"],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+    },
+  });
 
-    if (res.ok) {
-      const body = (await res.json()) as GeminiTtsResponse;
-      const inline = body.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
-      if (inline?.data) {
+  // The router rotates across keys on 429/quota and retries transient
+  // 404/5xx (the free TTS tier returns both intermittently), so a live
+  // reminder does not fail on the first transient miss or a single capped key.
+  try {
+    return await runWithGeminiKeys(
+      "tts",
+      async (key) => {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body: requestBody,
+        });
+
+        if (!res.ok) {
+          const detail = (await res.text().catch(() => "")).slice(0, 200) || res.statusText;
+          throw new GeminiHttpError(res.status, detail);
+        }
+
+        const body = (await res.json()) as GeminiTtsResponse;
+        const inline = body.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
+        if (!inline?.data) {
+          // 200 but no audio (finishReason OTHER) — transient; surface as a
+          // retryable 5xx so the router retries/rotates instead of failing.
+          throw new GeminiHttpError(503, "no audio in response");
+        }
         const rateMatch = /rate=(\d+)/.exec(inline.mimeType ?? "");
         const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000;
         return { data: pcmToWav(Buffer.from(inline.data, "base64"), sampleRate), contentType: "audio/wav" };
-      }
-      // 200 but no audio (finishReason OTHER) — transient, worth a retry.
-      lastDetail = "no audio in response";
-    } else {
-      lastDetail = (await res.text().catch(() => "")).slice(0, 200) || res.statusText;
-      // Only 429 (rate limit) and 5xx are transient; 4xx config errors are not.
-      if (res.status !== 429 && res.status < 500) {
-        throw new AppError("UPSTREAM_GEMINI", `Gemini TTS failed (${res.status}): ${lastDetail}`);
-      }
-    }
-
-    if (attempt < backoffs.length) await new Promise((r) => setTimeout(r, backoffs[attempt]));
+      },
+      { backoffMs: [1500, 4000, 8000] },
+    );
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new AppError("UPSTREAM_GEMINI", `Gemini TTS unavailable after retries: ${detail}`);
   }
-  throw new AppError("UPSTREAM_GEMINI", `Gemini TTS unavailable after retries: ${lastDetail}`);
 }
 
 /** Hugging Face TTS via Inference API with automatic cold-boot retry. */

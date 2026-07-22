@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { callLLM, stripFences, type LLMCompleteOpts } from "@/lib/openai";
 import { completeGemini } from "@/lib/gemini";
-import { config } from "@/lib/config";
+import { geminiEnabledAtRuntime } from "@/lib/cloudflare-runtime";
 import { logger } from "@/lib/logger";
 
 /**
@@ -40,7 +40,7 @@ export async function callLLMDualVerify<T>(
   const { zodSchema, ...rest } = opts;
   const primaryPromise = callLLM(opts);
 
-  if (!config.geminiEnabled) {
+  if (!geminiEnabledAtRuntime()) {
     // Gemini not configured — identical to single-provider behavior.
     const primary = await primaryPromise;
     return { primary, secondary: null, bothSucceeded: false };

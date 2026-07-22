@@ -7,7 +7,7 @@ import { supabaseDatabaseError } from "@/lib/supabase/errors";
 import { roundRupees } from "@/lib/util/money";
 import type { GenericMatchResult, Salt } from "@/types/domain";
 
-import { findBestCandidate, brandUnitPrice } from "@/lib/generics-math";
+import { findBestCandidate, brandUnitPrice, dedupeMatches } from "@/lib/generics-math";
 
 export async function getSupabaseGenerics() {
   const supabase = await createSupabaseServerClient();
@@ -55,7 +55,9 @@ export async function getSupabaseGenerics() {
     }
   }
 
-  return { matches, totalMonthlySavingsInr: total };
+  // Collapse duplicate medicines (duplicate scan/seed) into one row each and
+  // recompute the total so a duplicate can never inflate the savings figure.
+  return dedupeMatches(matches);
 }
 
 export async function runSupabaseGenerics(patientId: string) {
@@ -99,7 +101,7 @@ export async function runSupabaseGenerics(patientId: string) {
       continue;
     }
 
-    const brandUnit = brandUnitPrice(med.brand_name, med.mrp_inr, med.pack_size);
+    const brandUnit = brandUnitPrice(med.mrp_inr, med.pack_size);
     const jaUnit = cand.ja.mrpInr != null && cand.ja.packSize ? cand.ja.mrpInr / cand.ja.packSize : null;
 
     const activeSchedules = med.schedules?.filter(s => s.active) || [];
@@ -160,7 +162,9 @@ export async function runSupabaseGenerics(patientId: string) {
     });
   }
 
-  return { matches, totalMonthlySavingsInr: total };
+  // Collapse duplicate medicines (duplicate scan/seed) into one row each and
+  // recompute the total so a duplicate can never inflate the savings figure.
+  return dedupeMatches(matches);
 }
 
 async function storeSupabaseNoMatch(supabase: any, base: { medicationId: string; brandName: string }): Promise<GenericMatchResult> {

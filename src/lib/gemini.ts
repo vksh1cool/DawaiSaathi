@@ -1,5 +1,6 @@
-import { config } from "@/lib/config";
+import { geminiEnabledAtRuntime, getGeminiModel } from "@/lib/cloudflare-runtime";
 import { AppError } from "@/lib/errors";
+import { GeminiHttpError, runWithGeminiKeys } from "@/lib/gemini-router";
 import { logger } from "@/lib/logger";
 import { reserveGeminiRequest } from "@/lib/openai-budget";
 import type { LLMClient, LLMCompleteOpts } from "@/lib/openai";
@@ -21,8 +22,6 @@ import type { LLMClient, LLMCompleteOpts } from "@/lib/openai";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 /** Split a `data:<mime>;base64,<data>` URL into the parts Gemini inline_data needs. */
 function parseDataUrl(dataUrl: string): { mimeType: string; data: string } {
   const match = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl);
@@ -32,8 +31,8 @@ function parseDataUrl(dataUrl: string): { mimeType: string; data: string } {
 
 const realGeminiClient: LLMClient = {
   async complete({ system, content, schemaName, jsonSchema }) {
-    if (!config.geminiApiKey) {
-      // Callers should check config.geminiEnabled before reaching here, but
+    if (!geminiEnabledAtRuntime()) {
+      // Callers should check geminiEnabledAtRuntime() before reaching here, but
       // fail loudly rather than silently sending a request with no key.
       throw new AppError("UPSTREAM_OPENAI", "Gemini is not configured (GEMINI_API_KEY missing).");
     }
@@ -45,7 +44,7 @@ const realGeminiClient: LLMClient = {
         : { inline_data: parseDataUrl(c.dataUrl) },
     );
 
-    const model = config.geminiModel;
+    const model = getGeminiModel();
     const url = `${GEMINI_BASE}/${model}:generateContent`;
     // Native JSON mode is requested via responseMimeType; the schema is also
     // embedded in the system instruction so the model knows the shape. Zod
@@ -62,12 +61,13 @@ const realGeminiClient: LLMClient = {
       generationConfig: { responseMimeType: "application/json" },
     };
 
-    const backoffs = [1000, 4000];
-    let lastErr: unknown;
-    for (let attempt = 0; attempt <= backoffs.length; attempt++) {
-      try {
-        // Counts every network attempt, including retries — same
-        // conservative accounting as the primary provider's budget guard.
+    // The router fans this request across every configured key, rotating on
+    // rate-limit/quota/auth and backing off on transient errors, so a single
+    // exhausted key can't fail a live scan or interaction check.
+    try {
+      return await runWithGeminiKeys(schemaName, async (key, keyIndex) => {
+        // Counts every network attempt, including retries and key rotations —
+        // same conservative accounting as the primary provider's budget guard.
         await reserveGeminiRequest();
         const started = Date.now();
 
@@ -75,46 +75,39 @@ const realGeminiClient: LLMClient = {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-goog-api-key": config.geminiApiKey,
+            "x-goog-api-key": key,
           },
           body: JSON.stringify(body),
         });
 
         if (!resp.ok) {
           const errText = await resp.text().catch(() => "");
-          const e = new Error(`Gemini ${resp.status}: ${errText.slice(0, 300)}`) as Error & { status?: number };
-          e.status = resp.status;
-          throw e;
+          throw new GeminiHttpError(resp.status, errText);
         }
 
         const json = (await resp.json()) as {
           candidates?: { content?: { parts?: { text?: string }[] } }[];
         };
         const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim();
+        if (!text) {
+          // An empty completion (finishReason OTHER/SAFETY) is transient on the
+          // free tier — surface as a retryable 5xx so the router retries/rotates.
+          throw new GeminiHttpError(503, "Empty completion");
+        }
         logger.info(
-          { service: "gemini", op: schemaName, model, ms: Date.now() - started, ok: true },
+          { service: "gemini", op: schemaName, model, keyIndex, ms: Date.now() - started, ok: true },
           "llm call",
         );
-        if (!text) throw new Error("Empty completion");
         return text;
-      } catch (err) {
-        if (err instanceof AppError) throw err;
-        lastErr = err;
-        const status = (err as { status?: number })?.status;
-        const retryable = status === 429 || (status !== undefined && status >= 500) || status === undefined;
-        if (attempt < backoffs.length && retryable) {
-          logger.warn({ service: "gemini", op: schemaName, status, attempt }, "llm retry");
-          await sleep(backoffs[attempt]);
-          continue;
-        }
-        break;
-      }
+      });
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw new AppError(
+        "UPSTREAM_OPENAI",
+        "The Gemini cross-check service is temporarily unavailable.",
+        err,
+      );
     }
-    throw new AppError(
-      "UPSTREAM_OPENAI",
-      "The Gemini cross-check service is temporarily unavailable.",
-      lastErr,
-    );
   },
 };
 

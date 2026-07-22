@@ -5,7 +5,7 @@ import { usesSupabaseAuth } from "@/lib/cloudflare-runtime";
 import type { GenericMatchResult, Salt } from "@/types/domain";
 import type { Medication } from "@prisma/client";
 
-import { findBestCandidate, brandUnitPrice } from "@/lib/generics-math";
+import { findBestCandidate, brandUnitPrice, dedupeMatches } from "@/lib/generics-math";
 export { findBestCandidate, brandUnitPrice } from "@/lib/generics-math";
 
 export type GenericsRunResult = {
@@ -46,7 +46,7 @@ export async function runGenerics(patientId: string): Promise<GenericsRunResult>
       continue;
     }
 
-    const brandUnit = brandUnitPrice(med.brandName, med.mrpInr, med.packSize);
+    const brandUnit = brandUnitPrice(med.mrpInr, med.packSize);
     const jaUnit = cand.ja.mrpInr != null && cand.ja.packSize ? cand.ja.mrpInr / cand.ja.packSize : null;
 
     const schedule = med.schedules[0];
@@ -87,7 +87,9 @@ export async function runGenerics(patientId: string): Promise<GenericsRunResult>
     matches.push(serializeMatch(row.id, base, row));
   }
 
-  return { matches, totalMonthlySavingsInr: total };
+  // Collapse any medicine that exists more than once (duplicate scan/seed) so
+  // the savings screen shows one row per medicine and never double-counts.
+  return dedupeMatches(matches);
 }
 
 async function storeNoMatch(base: { medicationId: string; brandName: string }): Promise<GenericMatchResult> {
@@ -155,5 +157,7 @@ export async function getGenerics(patientId: string): Promise<GenericsRunResult>
       total += m.monthlySavingsInr;
     }
   }
-  return { matches, totalMonthlySavingsInr: total };
+  // Collapse any medicine that exists more than once (duplicate scan/seed) so
+  // the savings screen shows one row per medicine and never double-counts.
+  return dedupeMatches(matches);
 }

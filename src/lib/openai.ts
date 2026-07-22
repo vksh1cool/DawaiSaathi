@@ -10,16 +10,22 @@ import { reserveOpenAiRequest } from "@/lib/openai-budget";
  * The LLM call is injectable so tests never hit the network.
  */
 
-/** OpenAI SDK also speaks the OpenAI-compatible NIM chat-completions API. */
-export const openai = new OpenAI({
-  apiKey: config.llmApiKey,
-  ...(config.llmBaseUrl ? { baseURL: config.llmBaseUrl } : {}),
-});
-
 /** TTS stays on OpenAI unless a dedicated NIM Speech deployment is configured. */
 export const openAiTts = config.openAiTtsApiKey
   ? new OpenAI({ apiKey: config.openAiTtsApiKey })
   : null;
+
+/**
+ * Chat completions are sent with the global `fetch`, NOT the OpenAI SDK's
+ * default transport. On the Cloudflare Workers runtime the SDK's Node-http
+ * client throws `TypeError: Cannot read properties of null (reading 'has')`
+ * inside `processHeader` — so every Groq/NIM/OpenAI text call fails in
+ * production. `fetch` is natively supported on Workers (this is exactly how
+ * src/lib/gemini.ts talks to Gemini), so it works in both Node and Workers.
+ * The OpenAI-compatible chat-completions surface is identical across OpenAI,
+ * Groq, and NIM, so one fetch path serves all three.
+ */
+const CHAT_COMPLETIONS_URL = `${(config.llmBaseUrl ?? "https://api.openai.com/v1").replace(/\/$/, "")}/chat/completions`;
 
 export type LLMText = { type: "text"; text: string };
 export type LLMImage = { type: "image"; dataUrl: string };
@@ -74,36 +80,45 @@ const realClient: LLMClient = {
           { role: "system" as const, content: system + jsonHint },
           { role: "user" as const, content: userParts },
         ];
-        const resp = await openai.chat.completions.create(
+        // OpenAI supports strict json_schema; Groq/NIM deployments do not all
+        // implement it, so they use json_object mode + the schema-in-prompt
+        // hint above. Zod remains the final validation boundary below.
+        const responseFormat =
           config.llmProvider === "openai"
             ? {
-                model,
-                messages,
-                response_format: {
-                  type: "json_schema",
-                  json_schema: {
-                    name: schemaName,
-                    strict: true,
-                    schema: jsonSchema as Record<string, unknown>,
-                  },
+                type: "json_schema" as const,
+                json_schema: {
+                  name: schemaName,
+                  strict: true,
+                  schema: jsonSchema as Record<string, unknown>,
                 },
               }
-            : {
-                // Groq and NIM expose the chat-completions surface, but
-                // deployed models do not all implement OpenAI's strict
-                // JSON-schema response format. We use json_object mode
-                // and the schema is included in the system prompt above.
-                // Zod remains the final validation boundary below.
-                model,
-                messages,
-                response_format: { type: "json_object" },
-              },
-        );
+            : { type: "json_object" as const };
+
+        const resp = await fetch(CHAT_COMPLETIONS_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${config.llmApiKey}`,
+          },
+          body: JSON.stringify({ model, messages, response_format: responseFormat }),
+        });
+        if (!resp.ok) {
+          const errText = await resp.text().catch(() => "");
+          const e = new Error(
+            `${config.llmProvider} ${resp.status}: ${errText.slice(0, 300)}`,
+          ) as Error & { status?: number };
+          e.status = resp.status;
+          throw e;
+        }
+        const json = (await resp.json()) as {
+          choices?: { message?: { content?: string } }[];
+        };
         logger.info(
           { service: config.llmProvider, op: schemaName, model, ms: Date.now() - started, ok: true },
           "llm call",
         );
-        const text = resp.choices[0]?.message?.content;
+        const text = json.choices?.[0]?.message?.content;
         if (!text) throw new Error("Empty completion");
         return text;
       } catch (err) {

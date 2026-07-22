@@ -1,6 +1,6 @@
 "use client";
 
-import { ApiError, apiJson } from "@/lib/api-client";
+import { ApiError, apiGet, apiJson } from "@/lib/api-client";
 import { randomUuid } from "@/lib/util/browser-id";
 import type { AppLanguage } from "@/lib/languages";
 
@@ -49,6 +49,18 @@ export async function seedDemoHousehold(uiLanguage: AppLanguage): Promise<void> 
       console.warn("[demo] household seed failed", reason);
       return;
     }
+  }
+
+  // Idempotency: if this household already has medications (e.g. the demo was
+  // started before, or the user has already scanned their own strips), never
+  // add the starter medicine again. Re-seeding was the source of the duplicate
+  // "Telma 40" rows on the savings screen.
+  try {
+    const existing = await apiGet<{ medications: SeededMedication[] }>("/api/medications");
+    if (existing.medications.length > 0) return;
+  } catch {
+    // If we cannot read the current medications, fall through and let the
+    // create step's own error handling deal with it rather than blocking seed.
   }
 
   try {

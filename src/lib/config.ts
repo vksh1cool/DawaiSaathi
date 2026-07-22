@@ -59,6 +59,11 @@ const schema = z.object({
   // It is optional: when unset, dual-verify degrades to the single
   // configured provider exactly like today. It never replaces AI_PROVIDER.
   GEMINI_API_KEY: z.string().trim().optional(),
+  // Optional second Gemini key. Powers the request-time failover router
+  // (src/lib/gemini-router.ts): when the primary key is rate-limited (429),
+  // quota-capped, or auth-rejected, the router rotates to this one so a live
+  // demo never breaks on a single exhausted key.
+  GEMINI_API_KEY_2: z.string().trim().optional(),
   GEMINI_MODEL: z.string().default("gemini-flash-latest"),
   // Gemini native text-to-speech: human-sounding, multilingual (Hindi + English
   // from the same voice — the model speaks whatever language the text is in).
@@ -137,12 +142,17 @@ const openAiConfigured = isConfiguredSecret(env.OPENAI_API_KEY);
 const nimConfigured = isConfiguredSecret(env.NIM_API_KEY);
 const groqConfigured = isConfiguredSecret(env.GROQ_API_KEY);
 const geminiConfigured = isConfiguredSecret(env.GEMINI_API_KEY);
+const gemini2Configured = isConfiguredSecret(env.GEMINI_API_KEY_2);
+// Gemini is "enabled" when EITHER key is usable — the router will pick whichever
+// is present. This keeps dual-verify and TTS available even if only the
+// secondary key is configured on a given environment.
+const anyGeminiConfigured = geminiConfigured || gemini2Configured;
 const supabaseUrlConfigured = isConfiguredSecret(env.SUPABASE_URL);
 const supabaseAnonConfigured = isConfiguredSecret(env.SUPABASE_ANON_KEY);
 
 const effectiveAiProvider =
   env.AI_PROVIDER ||
-  (groqConfigured ? "groq" : geminiConfigured ? "gemini" : openAiConfigured ? "openai" : "groq");
+  (groqConfigured ? "groq" : anyGeminiConfigured ? "gemini" : openAiConfigured ? "openai" : "groq");
 
 const configIssues: string[] = [];
 if (effectiveAiProvider === "openai" && !openAiConfigured) {
@@ -157,8 +167,8 @@ if (effectiveAiProvider === "nim" && !env.NIM_MODEL) {
 if (effectiveAiProvider === "groq" && !groqConfigured) {
   configIssues.push("GROQ_API_KEY is required when AI_PROVIDER=groq");
 }
-if (effectiveAiProvider === "gemini" && !geminiConfigured) {
-  configIssues.push("GEMINI_API_KEY is required when AI_PROVIDER=gemini");
+if (effectiveAiProvider === "gemini" && !anyGeminiConfigured) {
+  configIssues.push("GEMINI_API_KEY (or GEMINI_API_KEY_2) is required when AI_PROVIDER=gemini");
 }
 if (env.AUTH_DRIVER === "supabase" && (!supabaseUrlConfigured || !supabaseAnonConfigured)) {
   configIssues.push("SUPABASE_URL and SUPABASE_ANON_KEY are required when AUTH_DRIVER=supabase");
@@ -170,7 +180,7 @@ if (configIssues.length > 0) {
 const llmApiKey =
   effectiveAiProvider === "nim" ? env.NIM_API_KEY!
   : effectiveAiProvider === "groq" ? env.GROQ_API_KEY!
-  : effectiveAiProvider === "gemini" ? env.GEMINI_API_KEY!
+  : effectiveAiProvider === "gemini" ? (env.GEMINI_API_KEY ?? env.GEMINI_API_KEY_2)!
   : env.OPENAI_API_KEY!;
 const llmBaseUrl =
   effectiveAiProvider === "nim" ? env.NIM_BASE_URL
@@ -229,12 +239,14 @@ export const config = {
   // Second AI provider used only for dual-verify on safety-critical calls
   // (interactions + extraction). Disabled (skipped, not errored) when no key
   // is configured, so existing single-provider behaviour is unaffected.
-  geminiEnabled: geminiConfigured,
+  geminiEnabled: anyGeminiConfigured,
   geminiApiKey: geminiConfigured ? env.GEMINI_API_KEY! : null,
+  /** Failover key for the Gemini router (src/lib/gemini-router.ts). */
+  geminiApiKey2: gemini2Configured ? env.GEMINI_API_KEY_2! : null,
   geminiModel: env.GEMINI_MODEL,
   geminiDailyLlmRequestLimit: env.GEMINI_DAILY_LLM_REQUEST_LIMIT,
   // Gemini native TTS — preferred human/multilingual voice provider.
-  geminiTtsEnabled: geminiConfigured,
+  geminiTtsEnabled: anyGeminiConfigured,
   geminiTtsModel: env.GEMINI_TTS_MODEL,
   geminiTtsVoiceFemale: env.GEMINI_TTS_VOICE_FEMALE,
   geminiTtsVoiceMale: env.GEMINI_TTS_VOICE_MALE,
