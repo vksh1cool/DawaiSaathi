@@ -12,6 +12,10 @@ import { HistoryClient } from "./HistoryClient";
 import { T } from "@/components/T";
 import { listSupabaseReminderCalls } from "@/lib/supabase/calls";
 
+// Patient-specific data read on every request: never prerender this page at
+// build time (that either fails the build or freezes stale doses into HTML).
+export const dynamic = "force-dynamic";
+
 async function getAdherenceData() {
   if (usesSupabaseAuth()) {
     return getSupabaseAdherence(7);

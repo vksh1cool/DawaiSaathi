@@ -53,14 +53,14 @@ export function AuthScreen({
           </div>
         </section>
 
-        <section className="w-full justify-self-center rounded-[22px] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm sm:max-w-[460px] sm:p-7">
+        <section className="w-full min-w-0 justify-self-center rounded-[22px] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm min-[360px]:p-5 sm:max-w-[460px] sm:p-7">
           <div className="mb-7 flex items-center gap-3">
-            <Image src="/logo.png" alt="" width={48} height={48} className="rounded-[14px]" priority />
+            <Image src="/logo.png" alt="" width={48} height={48} className="h-10 w-10 shrink-0 rounded-[14px] min-[360px]:h-12 min-[360px]:w-12" priority />
             <div className="min-w-0 flex-1">
-              <p className="text-lg font-bold text-[var(--color-primary)]">{t("brand.name")}</p>
+              <p className="truncate text-lg font-bold text-[var(--color-primary)]">{t("brand.name")}</p>
               <p className="text-sm text-[var(--color-text-muted)]">{t("auth.caregiverAccount")}</p>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex shrink-0 items-center gap-1.5">
               <FeedbackLauncher compact />
               <AppLanguageSelect
                 compact

@@ -46,7 +46,13 @@
     "add": "Add",
     "demo": "DEMO",
     "perMonth": "/month",
-    "perYear": "every year"
+    "perYear": "every year",
+    "errorTitle": "Something went wrong",
+    "errorBody": "This screen could not load. Your medicines and reminders are safe — please try again.",
+    "goHome": "Go to home",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "This link may be old or mistyped.",
+    "closeDialog": "Close dialog"
   },
   "onboarding": {
     "welcomeTitle": "Welcome to DawaiSaathi",
@@ -152,7 +158,8 @@
     "greetingEvening": "Good evening, {name}",
     "allDoneTitle": "All of today's medicines are taken",
     "allDoneBody": "Wonderful, {name}! Every dose is confirmed.",
-    "streak": "{n}-day streak"
+    "streak": "{n}-day streak",
+    "previewCall": "Preview call"
   },
   "alarms": {
     "permissionTitle": "Reminder alerts",
@@ -168,17 +175,17 @@
   "scan": {
     "title": "Scan medicines",
     "tips": "Lay strips flat in daylight. Include the printed back side, batch, expiry, and manufacturer.",
-    "dropzone": "Drop or tap to add photos (1–5)",
+    "dropzone": "Take a clear photo of each strip, or choose photos you already have.",
     "extract": "Extract medicines",
     "phaseReading": "Reading strips",
     "phaseSalts": "Identifying salts",
     "phaseDetails": "Checking details",
     "error_retry": "We couldn't read this clearly — one more photo in daylight will help.",
     "tooMany": "Please use at most 5 photos",
-    "unsupportedImage": "Use a JPG, PNG, or WebP photo.",
+    "unsupportedImage": "This photo could not be opened. Please use a JPG, PNG, or WebP photo.",
     "duplicateImage": "That photo is already added.",
     "photoLimit": "Add up to {max} clear photos.",
-    "photoFormats": "Add up to {max} clear JPG, PNG, or WebP photos (up to 4 MB each).",
+    "photoFormats": "Add up to {max} clear photos. Large photos are resized automatically.",
     "photoAlt": "photo of medicine strip {n}",
     "modeScanTab": "Scan a photo",
     "modePickerTab": "Choose from list",
@@ -189,7 +196,13 @@
     "pickerNotice": "These are catalog details, not a pack scan. Please confirm expiry, batch number, and manufacturer from the physical pack before saving.",
     "pickerSelectedCount": "{n} selected",
     "pickerAddCta": "Review {n} medicines",
-    "pickerClearSelection": "Clear selection"
+    "pickerClearSelection": "Clear selection",
+    "takePhoto": "Take photo",
+    "choosePhotos": "Choose photos",
+    "preparing": "Preparing…",
+    "photoTooLarge": "This photo is too large to upload. Please take it again or choose a smaller photo.",
+    "networkError": "We couldn't reach DawaiSaathi. Check your internet connection and try again — your photos are still here.",
+    "perPack": "{n}/pack"
   },
   "review": {
     "title": "Check what we found ({n})",
@@ -226,7 +239,11 @@
     "packDetailBatch": "batch number",
     "packDetailManufacturer": "manufacturer",
     "prescriptionConfirmation": "I checked each medicine name, strength, and instructions against the prescription, pack, or a pharmacist’s directions. DawaiSaathi does not decide what to take.",
-    "prescriptionConfirmationRequired": "Please confirm that you checked the medicines against the prescription, pack, or pharmacist instructions."
+    "prescriptionConfirmationRequired": "Please confirm that you checked the medicines against the prescription, pack, or pharmacist instructions.",
+    "strength": "Strength",
+    "unit": "Unit",
+    "brandPlaceholder": "e.g. Telma 40",
+    "saltPlaceholder": "e.g. telmisartan"
   },
   "authenticity": {
     "sectionTitle": "Packaging check",
@@ -270,15 +287,16 @@
     "saves": "Saves {amount}{per}",
     "noMatch": "No Jan Aushadhi match found",
     "noSavingsSummary": "We have not found a verified saving yet.",
-    "confHigh": "high",
-    "confMedium": "medium",
-    "confLow": "low — not counted in total",
+    "confHigh": "Exact match",
+    "confMedium": "Close match",
+    "confLow": "Uncertain match",
     "caption": "Same salt, same strength. Confirm the switch with your pharmacist.",
     "findKendra": "Find a Jan Aushadhi Kendra",
     "estimated": "est.",
     "perUnit": "{brand}/unit → {ja}/unit",
     "loadError": "We couldn't load savings right now. Please try again.",
-    "empty": "No verified generic matches are available yet. Check again after adding medicines."
+    "empty": "No verified generic matches are available yet. Check again after adding medicines.",
+    "notCounted": "Not counted in your total — ask your pharmacist before switching."
   },
   "schedule": {
     "title": "Set reminder times",
@@ -477,6 +495,19 @@
     "copyLinkError": "We couldn't copy the link. Please copy it manually.",
     "profileCardTitle": "Household",
     "profileCardBody": "Invite caregivers and manage who has access to this household.",
-    "manageMembers": "Manage members"
+    "manageMembers": "Manage members",
+    "unavailable": "Sharing care with family members needs caregiver accounts, which are not switched on for this app yet. Everything else works as usual.",
+    "signInRequired": "Please sign in again to see who helps with care.",
+    "signIn": "Sign in",
+    "backToSettings": "Back to settings"
+  },
+  "forms": {
+    "tablet": "Tablet",
+    "capsule": "Capsule",
+    "syrup": "Syrup",
+    "drops": "Drops",
+    "injection": "Injection",
+    "cream": "Cream",
+    "other": "Other"
   }
 }

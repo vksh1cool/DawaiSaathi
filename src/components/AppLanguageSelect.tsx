@@ -25,13 +25,13 @@ export function AppLanguageSelect({
   return (
     <label
       className={`relative flex items-center rounded-[12px] border border-[var(--color-border)] bg-[var(--color-surface)] transition-[border-color,box-shadow] duration-150 ease-[var(--ease-out)] focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary)]/15 ${
-        compact ? "min-h-[44px] px-2" : "min-h-[52px] w-full px-3"
+        compact ? "min-h-[44px] shrink-0 px-2" : "min-h-[52px] w-full px-3"
       } ${className}`}
     >
       <span className="sr-only">{label}</span>
       <Languages
         size={compact ? 17 : 19}
-        className="mr-2 shrink-0 text-[var(--color-primary)]"
+        className={`shrink-0 text-[var(--color-primary)] ${compact ? "mr-1 max-[399px]:hidden" : "mr-2"}`}
         aria-hidden="true"
       />
       <select
@@ -40,7 +40,7 @@ export function AppLanguageSelect({
         onChange={(event) => onChange(event.target.value as AppLanguage)}
         aria-label={label}
         className={`min-h-[44px] min-w-0 appearance-none bg-transparent text-left font-semibold text-[var(--color-text)] outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
-          compact ? "w-[4.25rem] pr-5 text-sm" : "w-full pr-8 text-base"
+          compact ? "w-[3.25rem] pr-4 text-sm" : "w-full pr-8 text-base"
         }`}
       >
         {APP_LANGUAGES.map((language) => (

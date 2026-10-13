@@ -122,7 +122,9 @@ describe("Supabase dose event adapter", () => {
               brand_name: "Telma 40",
               form: "tablet",
               high_risk: false,
-              expiry_month: "2026-09-01",
+              // Far-future expiry: a near date turns this into a time bomb
+              // once the calendar passes it ("ok" silently becomes "expired").
+              expiry_month: "2099-09-01",
             },
             schedules: { food_relation: "after_food" },
           },

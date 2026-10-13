@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, type ReactNode, type RefObject } from "react";
 import { X } from "lucide-react";
+import { useI18n } from "@/lib/i18n/provider";
 
 /**
  * Keyboard-safe modal primitive. It restores focus on close, closes on Escape
@@ -24,6 +25,7 @@ export function ModalDialog({
   titleClassName?: string;
   initialFocusRef?: RefObject<HTMLElement | null>;
 }) {
+  const { t } = useI18n();
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -112,10 +114,10 @@ export function ModalDialog({
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close dialog"
-              className="pressable -mr-1 flex h-8 w-8 items-center justify-center rounded-full text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              aria-label={t("common.closeDialog")}
+              className="pressable -mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--color-text-muted)] hover:bg-[var(--color-bg)] hover:text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
             >
-              <X size={18} aria-hidden="true" />
+              <X size={20} aria-hidden="true" />
             </button>
           )}
         </div>

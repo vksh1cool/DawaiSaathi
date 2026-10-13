@@ -2,21 +2,23 @@
 
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
-import { Card, PrimaryButton } from "@/components/ui";
+import { Card } from "@/components/ui";
+import { useI18n } from "@/lib/i18n/provider";
 
 export default function NotFound() {
+  const { t } = useI18n();
+
   return (
     <AppShell>
-      <div className="flex min-h-[50vh] flex-col items-center justify-center p-4 text-center">
+      <div className="flex min-h-[50vh] flex-col items-center justify-center text-center">
         <Card className="w-full max-w-sm">
-          <h2 className="text-lg font-bold">Page Not Found</h2>
-          <p className="mt-2 text-sm text-[var(--color-text-muted)]">
-            The page you are looking for does not exist.
-          </p>
-          <Link href="/" className="mt-6 block w-full">
-            <PrimaryButton className="w-full">
-              Go Home
-            </PrimaryButton>
+          <h1 className="text-lg font-bold">{t("common.notFoundTitle")}</h1>
+          <p className="mt-2 text-sm text-[var(--color-text-muted)]">{t("common.notFoundBody")}</p>
+          <Link
+            href="/"
+            className="pressable mt-6 flex min-h-[52px] w-full items-center justify-center rounded-[12px] bg-[var(--color-primary)] px-5 text-base font-semibold text-white transition-transform duration-150 ease-[var(--ease-out)]"
+          >
+            {t("common.goHome")}
           </Link>
         </Card>
       </div>

@@ -31,6 +31,10 @@ import { PollLiveDoses } from "./PollLiveDoses";
 import { AlertsList } from "./AlertsList";
 import { SavingsBanner } from "./SavingsBanner";
 
+// Patient-specific data read on every request: never prerender this page at
+// build time (that either fails the build or freezes stale doses into HTML).
+export const dynamic = "force-dynamic";
+
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function findingTone(severity: Finding["severity"]) {

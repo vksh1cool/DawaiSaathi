@@ -12,6 +12,14 @@ import type { DraftMedication, Salt, MedForm, StrengthUnit } from "@/types/domai
 
 const FORMS: MedForm[] = ["tablet", "capsule", "syrup", "drops", "injection", "cream", "other"];
 const UNITS: Exclude<StrengthUnit, null>[] = ["mg", "mcg", "g", "iu", "ml_per_5ml", "mg_per_5ml"];
+const UNIT_LABELS: Record<Exclude<StrengthUnit, null>, string> = {
+  mg: "mg",
+  mcg: "mcg",
+  g: "g",
+  iu: "IU",
+  ml_per_5ml: "ml/5 ml",
+  mg_per_5ml: "mg/5 ml",
+};
 
 export function MedReviewCard({
   draft,
@@ -49,7 +57,7 @@ export function MedReviewCard({
         value={draft.brandName ?? ""}
         confidence={draft.fieldConfidence.brandName}
         onChange={(v) => set({ brandName: v })}
-        placeholder="Telma 40"
+        placeholder={t("review.brandPlaceholder")}
       />
 
       {/* Salts */}
@@ -59,12 +67,14 @@ export function MedReviewCard({
         </span>
         <div className="flex flex-col gap-2">
           {draft.salts.map((s, i) => (
-            <div key={i} className="flex items-center gap-1.5">
+            // Below 420px the salt name takes its own line; strength, unit and
+            // remove sit underneath, so the row never pushes the page sideways.
+            <div key={i} className="flex flex-wrap items-center gap-1.5">
               <input
                 value={s.inn}
                 onChange={(e) => setSalt(i, { inn: e.target.value, fdaSearchName: e.target.value })}
-                className="min-h-[44px] flex-1 rounded-[10px] border border-[var(--color-border)] px-2.5 text-base outline-none focus:border-[var(--color-primary)]"
-                placeholder="telmisartan"
+                className="min-h-[44px] min-w-0 basis-full rounded-[10px] border border-[var(--color-border)] px-2.5 text-base outline-none focus:border-[var(--color-primary)] min-[420px]:basis-0 min-[420px]:flex-1"
+                placeholder={t("review.saltPlaceholder")}
                 aria-label={`${t("review.salt")} ${i + 1}`}
               />
               <input
@@ -74,19 +84,18 @@ export function MedReviewCard({
                 min="0"
                 step="any"
                 onChange={(e) => setSalt(i, { strengthValue: finiteNumber(e.target.value) })}
-                className="min-h-[44px] w-16 rounded-[10px] border border-[var(--color-border)] px-2 text-base outline-none focus:border-[var(--color-primary)]"
-                placeholder="40"
-                aria-label={`${t("review.salt")} ${i + 1} strength`}
+                className="min-h-[44px] w-20 min-w-0 rounded-[10px] border border-[var(--color-border)] px-2 text-base outline-none focus:border-[var(--color-primary)] max-[419px]:flex-1"
+                aria-label={`${t("review.salt")} ${i + 1} — ${t("review.strength")}`}
               />
               <select
                 value={s.strengthUnit ?? "mg"}
                 onChange={(e) => setSalt(i, { strengthUnit: e.target.value as StrengthUnit })}
-                className="min-h-[44px] rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 text-sm outline-none"
-                aria-label={`${t("review.salt")} ${i + 1} unit`}
+                className="min-h-[44px] w-[6rem] shrink-0 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 text-sm outline-none"
+                aria-label={`${t("review.salt")} ${i + 1} — ${t("review.unit")}`}
               >
                 {UNITS.map((u) => (
                   <option key={u} value={u}>
-                    {u}
+                    {UNIT_LABELS[u]}
                   </option>
                 ))}
               </select>
@@ -94,8 +103,8 @@ export function MedReviewCard({
                 <button
                   type="button"
                   onClick={() => set({ salts: draft.salts.filter((_, idx) => idx !== i) })}
-                  className="pressable min-h-[44px] min-w-[44px] rounded-[10px] p-2 text-[var(--color-text-muted)] transition-transform duration-150 ease-[var(--ease-out)]"
-                  aria-label={t("common.remove")}
+                  className="pressable flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-[10px] p-2 text-[var(--color-text-muted)] transition-transform duration-150 ease-[var(--ease-out)]"
+                  aria-label={`${t("common.remove")} — ${t("review.salt")} ${i + 1}`}
                 >
                   <Trash2 size={16} />
                 </button>
@@ -131,7 +140,7 @@ export function MedReviewCard({
           >
             {FORMS.map((f) => (
               <option key={f} value={f}>
-                {f}
+                {t(`forms.${f}`)}
               </option>
             ))}
           </select>
@@ -144,7 +153,6 @@ export function MedReviewCard({
           min={1}
           step={1}
           onChange={(v) => set({ packSize: finiteInteger(v) })}
-          placeholder="30"
         />
       </div>
 
@@ -158,7 +166,6 @@ export function MedReviewCard({
           min={0}
           step="0.01"
           onChange={(v) => set({ mrpInr: finiteNumber(v) })}
-          placeholder="234"
         />
         <ConfidenceField
           label={t("review.expiry")}
@@ -166,7 +173,7 @@ export function MedReviewCard({
           type="month"
           confidence={draft.fieldConfidence.expiryDate}
           onChange={(v) => set({ expiryDate: v || null })}
-          placeholder="2027-08"
+          placeholder="YYYY-MM"
         />
         <ConfidenceField
           label={t("review.batch")}

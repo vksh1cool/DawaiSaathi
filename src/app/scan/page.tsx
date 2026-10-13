@@ -18,6 +18,7 @@ export default function ScanPage() {
   const { t } = useI18n();
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
+  const [preparing, setPreparing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,7 +32,9 @@ export default function ScanPage() {
       sessionStorage.setItem("dawaisaathi.scan", JSON.stringify(result));
       router.push("/scan/review");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t("scan.error_retry"));
+      // fetch() itself throws (TypeError) when the phone is offline or the
+      // upload is cut off — that is not a photo-quality problem.
+      setError(e instanceof ApiError ? e.message : navigator.onLine === false || e instanceof TypeError ? t("scan.networkError") : t("scan.error_retry"));
       setBusy(false);
     }
   };
@@ -48,11 +51,11 @@ export default function ScanPage() {
         <ExtractionProgress />
       ) : (
         <div className="flex flex-col gap-4">
-          <PhotoDropzone files={files} onChange={setFiles} max={5} />
+          <PhotoDropzone files={files} onChange={setFiles} onPreparingChange={setPreparing} max={5} />
           {error && (
             <Banner tone="danger">{error}</Banner>
           )}
-          <PrimaryButton disabled={files.length === 0} onClick={extract}>
+          <PrimaryButton disabled={files.length === 0 || preparing} onClick={extract}>
             {t("scan.extract")}
             <ArrowRight size={18} />
           </PrimaryButton>

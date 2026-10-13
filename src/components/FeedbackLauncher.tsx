@@ -27,12 +27,12 @@ export function FeedbackLauncher({
         onClick={() => setOpen(true)}
         aria-label={t("feedback.open")}
         title={t("feedback.open")}
-        className={`pressable flex h-12 items-center justify-center gap-1.5 rounded-full text-[var(--color-primary)] transition-[transform,background-color] duration-150 ease-[var(--ease-out)] ${
-          compact ? "w-12 px-0" : "px-3 max-[420px]:w-12 max-[420px]:px-0"
+        className={`pressable flex h-11 items-center justify-center gap-1.5 rounded-full text-[var(--color-primary)] transition-[transform,background-color] duration-150 ease-[var(--ease-out)] ${
+          compact ? "w-11 px-0" : "px-3 max-[440px]:w-11 max-[440px]:px-0"
         } ${className}`}
       >
         <MessageSquare size={20} aria-hidden="true" />
-        <span className={`text-sm font-semibold ${compact ? "sr-only" : "max-[420px]:sr-only"}`}>
+        <span className={`text-sm font-semibold ${compact ? "sr-only" : "max-[440px]:sr-only"}`}>
           {t("feedback.open")}
         </span>
       </button>

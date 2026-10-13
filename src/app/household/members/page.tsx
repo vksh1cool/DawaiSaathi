@@ -52,7 +52,7 @@ export default function HouseholdMembersPage() {
   const { message, showMessage } = useTimedMessage();
 
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<"unavailable" | "signin" | "failed" | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -79,9 +79,14 @@ export default function HouseholdMembersPage() {
         setCurrentUserId(res.currentUserId);
         setIsOwner(res.isOwner);
       })
-      .catch(() => setLoadError(t("household.loadError")))
+      .catch((reason) => {
+        // NOT_FOUND: this deployment has no caregiver accounts yet, so there
+        // is no roster to retry. UNAUTHORIZED: the session expired.
+        const code = reason instanceof ApiError ? reason.code : null;
+        setLoadError(code === "NOT_FOUND" ? "unavailable" : code === "UNAUTHORIZED" ? "signin" : "failed");
+      })
       .finally(() => setLoading(false));
-  }, [t]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -168,14 +173,45 @@ export default function HouseholdMembersPage() {
     );
   }
 
+  const header = (
+    <div className="mb-6 flex items-center gap-3">
+      <Link
+        href="/profile"
+        aria-label={t("common.back")}
+        className="pressable flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--color-bg)] transition-[transform,background-color] duration-150 ease-[var(--ease-out)] active:bg-[var(--color-border)]"
+      >
+        <ArrowLeft size={20} />
+      </Link>
+      <h1 className="text-2xl font-bold">{t("household.title")}</h1>
+    </div>
+  );
+
   if (loadError) {
     return (
       <AppShell>
-        <Card tone="warn">
-          <p className="text-sm">{loadError}</p>
-          <PrimaryButton className="mt-3" onClick={load}>
-            {t("common.tryAgain")}
-          </PrimaryButton>
+        {header}
+        <Card tone={loadError === "failed" ? "warn" : "surface"}>
+          <p className="text-sm leading-6">
+            {t(
+              loadError === "unavailable"
+                ? "household.unavailable"
+                : loadError === "signin"
+                  ? "household.signInRequired"
+                  : "household.loadError",
+            )}
+          </p>
+          {loadError === "failed" ? (
+            <PrimaryButton className="mt-3" onClick={load}>
+              {t("common.tryAgain")}
+            </PrimaryButton>
+          ) : (
+            <Link
+              href={loadError === "signin" ? "/auth?next=/household/members" : "/profile"}
+              className="pressable mt-3 flex min-h-[52px] w-full items-center justify-center rounded-[12px] bg-[var(--color-primary)] px-5 text-base font-semibold text-white transition-transform duration-150 ease-[var(--ease-out)]"
+            >
+              {t(loadError === "signin" ? "household.signIn" : "household.backToSettings")}
+            </Link>
+          )}
         </Card>
       </AppShell>
     );
@@ -183,16 +219,7 @@ export default function HouseholdMembersPage() {
 
   return (
     <AppShell>
-      <div className="mb-6 flex items-center gap-3">
-        <Link
-          href="/profile"
-          aria-label={t("common.back")}
-          className="pressable flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-bg)] transition-[transform,background-color] duration-150 ease-[var(--ease-out)] active:bg-[var(--color-border)]"
-        >
-          <ArrowLeft size={20} />
-        </Link>
-        <h1 className="text-2xl font-bold">{t("household.title")}</h1>
-      </div>
+      {header}
 
       <div className="flex flex-col gap-5">
         <Card>

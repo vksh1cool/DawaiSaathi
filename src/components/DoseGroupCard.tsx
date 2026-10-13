@@ -44,7 +44,7 @@ export function DoseGroupCard({
 
   return (
     <Card tone={tone} className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Icon size={22} className={iconColor} />
         <span className="text-lg font-semibold">{pretty12h(group.time, lang as Language)}</span>
         <span className="text-sm text-[var(--color-text-muted)]">
@@ -96,28 +96,28 @@ export function DoseGroupCard({
         </div>
       )}
       {group.status === "upcoming" && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-[var(--color-text-muted)]">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="min-w-[10rem] flex-1 text-sm text-[var(--color-text-muted)]">
             {t("home.ringsAt", {
               name: patientName,
               time: pretty12h(group.time, lang as Language),
             })}
           </p>
           {demoMode && (
-            <div className="flex gap-2">
+            <div className="flex shrink-0 gap-2">
               <button
                 type="button"
                 onClick={() => onSimulate(group.time)}
-                className="pressable min-h-[48px] rounded-full border border-[var(--color-border)] px-3 text-xs font-medium transition-[transform,background-color] duration-150 ease-[var(--ease-out)]"
+                className="pressable min-h-[48px] whitespace-nowrap rounded-full border border-[var(--color-border)] px-3 text-xs font-medium transition-[transform,background-color] duration-150 ease-[var(--ease-out)]"
               >
-                {t("call.simTitle", { name: "" }).replace("…", "")}
+                {t("home.previewCall")}
               </button>
               <button
                 type="button"
                 onClick={() => onCallNow(group.time)}
-                className="pressable flex min-h-[48px] items-center gap-1 rounded-full bg-[var(--color-primary)] px-3 text-xs font-semibold text-white transition-[transform,background-color] duration-150 ease-[var(--ease-out)]"
+                className="pressable flex min-h-[48px] items-center gap-1 whitespace-nowrap rounded-full bg-[var(--color-primary)] px-3 text-xs font-semibold text-white transition-[transform,background-color] duration-150 ease-[var(--ease-out)]"
               >
-                <PhoneCall size={12} /> {t("home.callNow")}
+                <PhoneCall size={14} aria-hidden="true" /> {t("home.callNow")}
               </button>
             </div>
           )}

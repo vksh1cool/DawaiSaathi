@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Force Gemini "on" for this suite regardless of the real environment (the
-// vitest env only sets OPENAI_API_KEY). Only geminiEnabled is overridden —
-// everything else keeps its real, already-config-validated value.
+// vitest env only sets OPENAI_API_KEY). Dual-verify is gated at request time
+// by geminiEnabledAtRuntime(), which looks for a usable key, so supply one
+// through config — everything else keeps its real, validated value.
 vi.mock("@/lib/config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/config")>();
-  return { ...actual, config: { ...actual.config, geminiEnabled: true } };
+  return {
+    ...actual,
+    config: { ...actual.config, geminiEnabled: true, geminiApiKey: "test-gemini-key", geminiApiKey2: undefined },
+  };
 });
 
 import { resetLLMClient, setLLMClient, type LLMClient } from "@/lib/openai";

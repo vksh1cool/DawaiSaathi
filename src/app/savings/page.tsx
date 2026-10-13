@@ -122,7 +122,7 @@ function SavingsRow({ match }: { match: GenericMatchResult }) {
   return (
     <Card className={low ? "opacity-60" : ""}>
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <p className="font-semibold">
             {match.brandName} <span className="text-[var(--color-text-muted)]">→ {match.jaProductName}</span>
           </p>
@@ -135,10 +135,11 @@ function SavingsRow({ match }: { match: GenericMatchResult }) {
             </p>
           )}
         </div>
-        <span className="rounded-full bg-[var(--color-primary-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--color-primary)]">
+        <span className="shrink-0 whitespace-nowrap rounded-full bg-[var(--color-primary-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--color-primary)]">
           {confLabel}
         </span>
       </div>
+      {low && <p className="mt-1 text-sm text-[var(--color-text-muted)]">{t("savings.notCounted")}</p>}
       {match.monthlySavingsInr != null && !low && (
         <p className="mt-1 font-semibold text-[var(--color-success)]">
           {t("savings.saves", { amount: formatInr(match.monthlySavingsInr), per: t("common.perMonth") })}

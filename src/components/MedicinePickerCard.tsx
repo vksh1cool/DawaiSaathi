@@ -2,6 +2,7 @@
 
 import { Check, Plus } from "lucide-react";
 import { Badge } from "@/components/ui";
+import { useI18n } from "@/lib/i18n/provider";
 import type { BrandPrice } from "@/lib/reference-data";
 
 export function MedicinePickerCard({
@@ -13,6 +14,8 @@ export function MedicinePickerCard({
   selected: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useI18n();
+  const formLabel = t(`forms.${brand.form}`);
   return (
     <button
       type="button"
@@ -26,8 +29,10 @@ export function MedicinePickerCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate font-semibold leading-tight text-[var(--color-text)]">{brand.brandName}</p>
-          <p className="truncate text-xs capitalize text-[var(--color-text-muted)]">{brand.genericName}</p>
+          {/* Never truncate a medicine name: "Glycomet 500" and "Glycomet GP 1"
+              must stay distinguishable on a narrow phone. */}
+          <p className="break-words font-semibold leading-tight text-[var(--color-text)]">{brand.brandName}</p>
+          <p className="line-clamp-2 break-words text-xs capitalize text-[var(--color-text-muted)]">{brand.genericName}</p>
         </div>
         <span
           className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border transition-colors duration-150 ${
@@ -42,9 +47,9 @@ export function MedicinePickerCard({
 
       <div className="flex flex-wrap gap-1.5">
         <Badge>
-          {brand.strengthValue ? `${brand.strengthValue}${brand.strengthUnit}` : brand.form} · {brand.form}
+          {brand.strengthValue ? `${brand.strengthValue}${brand.strengthUnit} · ${formLabel}` : formLabel}
         </Badge>
-        {brand.packSize != null && <Badge>{brand.packSize}/pack</Badge>}
+        {brand.packSize != null && <Badge>{t("scan.perPack", { n: brand.packSize })}</Badge>}
       </div>
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-xs text-[var(--color-text-muted)]">

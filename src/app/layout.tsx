@@ -29,13 +29,19 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   // Elder accessibility: never lock zoom (02-DESIGN §9).
+  // "cover" makes env(safe-area-inset-*) report real notch/home-indicator
+  // insets; the header and tab bar already pad themselves with them.
+  viewportFit: "cover",
   themeColor: "#0f766e",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html suppressHydrationWarning>
-      <body className={`${inter.variable} ${notoDevanagari.variable} antialiased`}>
+    // The font variables must live on <html>: Tailwind declares --font-sans on
+    // :root, and a var() there cannot see variables scoped to <body> — the
+    // whole stack would resolve as invalid and fall back to a serif font.
+    <html suppressHydrationWarning className={`${inter.variable} ${notoDevanagari.variable}`}>
+      <body className="antialiased">
         <I18nProvider>
           <AppInfoProvider>
             {children}

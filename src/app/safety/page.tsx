@@ -146,9 +146,9 @@ export default function SafetyPage() {
 
       {tab === "interactions" && (
         <>
-          <div className="mb-1 flex items-center justify-between">
-            <p className="text-sm text-[var(--color-text-muted)]">{t("safety.checked", { n: medCount, date })}</p>
-            <GhostButton onClick={recheck} disabled={rechecking} className="px-3">
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <p className="min-w-[9rem] flex-1 text-sm text-[var(--color-text-muted)]">{t("safety.checked", { n: medCount, date })}</p>
+            <GhostButton onClick={recheck} disabled={rechecking} className="shrink-0 whitespace-nowrap px-3">
               <RefreshCw size={16} className={rechecking ? "animate-spin" : ""} />
               {t("safety.recheck")}
             </GhostButton>

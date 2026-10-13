@@ -80,23 +80,30 @@ export function AppShell({
         {t("common.skipToContent")}
       </a>
       {/* Header */}
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)]/70 px-4 pb-2.5 pt-[calc(0.625rem_+_env(safe-area-inset-top))] backdrop-blur-xl">
-        <Link href="/" className="pressable flex min-h-[44px] items-center gap-2 rounded-[10px]">
-          <Image src="/logo.png" alt="DawaiSaathi" width={32} height={32} className="rounded-md" />
-          <span className="text-lg font-bold text-[var(--color-primary)]">{t("brand.name")}</span>
-          {info?.demoMode && (
-            <span className="rounded-full bg-[var(--color-warn-soft)] px-2 py-0.5 text-[10px] font-bold text-[var(--color-warn)]">
-              {t("common.demo")}
+      {/* The brand side may shrink (and on the narrowest phones drop to just
+          the logo); the action side never does, so nothing can push the page
+          wider than the viewport. */}
+      <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)]/70 px-3 pb-2.5 pt-[calc(0.625rem_+_env(safe-area-inset-top))] backdrop-blur-xl min-[400px]:px-4">
+        <Link href="/" className="pressable flex min-h-[44px] min-w-0 items-center gap-2 rounded-[10px]">
+          <Image src="/logo.png" alt="" width={32} height={32} className="shrink-0 rounded-md" />
+          <span className="flex min-w-0 flex-col items-start">
+            <span className="max-w-full truncate text-base font-bold leading-tight text-[var(--color-primary)] max-[359px]:sr-only min-[400px]:text-lg">
+              {t("brand.name")}
             </span>
-          )}
+            {info?.demoMode && (
+              <span className="rounded-full bg-[var(--color-warn-soft)] px-1.5 text-[10px] font-bold leading-4 text-[var(--color-warn)]">
+                {t("common.demo")}
+              </span>
+            )}
+          </span>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
           <LanguageToggle />
           <FeedbackLauncher />
           <Link
             href="/profile"
             aria-label={t("profile.title")}
-            className="pressable flex h-12 w-12 items-center justify-center rounded-full transition-[transform,background-color] duration-150 ease-[var(--ease-out)]"
+            className="pressable flex h-11 w-11 items-center justify-center rounded-full transition-[transform,background-color] duration-150 ease-[var(--ease-out)]"
           >
             <Settings size={22} className="text-[var(--color-text-muted)]" />
           </Link>
